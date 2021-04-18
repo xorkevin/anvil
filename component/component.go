@@ -28,6 +28,11 @@ var (
 )
 
 type (
+	Meta struct {
+		Name   string
+		Prefix string
+	}
+
 	Config struct {
 		Vars       map[string]interface{} `json:"vars" yaml:"vars"`
 		Components map[string]Component   `json:"components" yaml:"components"`

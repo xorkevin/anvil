@@ -158,9 +158,9 @@ func Test_jsonMergePatch(t *testing.T) {
 			assert := require.New(t)
 
 			var target, patch, expected interface{}
-			assert.Nil(json.Unmarshal([]byte(tc.Target), &target))
-			assert.Nil(json.Unmarshal([]byte(tc.Patch), &patch))
-			assert.Nil(json.Unmarshal([]byte(tc.Expected), &expected))
+			assert.NoError(json.Unmarshal([]byte(tc.Target), &target))
+			assert.NoError(json.Unmarshal([]byte(tc.Patch), &patch))
+			assert.NoError(json.Unmarshal([]byte(tc.Expected), &expected))
 			assert.Equal(expected, jsonMergePatch(target, patch))
 		})
 	}
