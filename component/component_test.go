@@ -49,8 +49,7 @@ components:
 				field1sub2: {{ .Vars.field1.field1sub1 }}
 `,
 			Config: Config{
-				Dir:  ".",
-				Base: "config.yaml",
+				Name: ".",
 				ConfigData: ConfigData{
 					Vars: map[string]interface{}{
 						"field1": map[string]interface{}{
@@ -89,7 +88,8 @@ components:
 			config, err := ParseConfigFile(fsys, tc.ConfigPath)
 			assert.NoError(err)
 			assert.NotNil(config)
-			assert.Equal(tc.Config, *config)
+			assert.Equal(tc.Config.Name, config.Name)
+			assert.Equal(tc.Config.ConfigData, config.ConfigData)
 		})
 	}
 }

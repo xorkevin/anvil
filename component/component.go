@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"log"
 	"path/filepath"
+	"text/template"
 
 	"gopkg.in/yaml.v3"
 )
@@ -23,32 +24,38 @@ const (
 )
 
 var (
-	ErrInvalidExt = errors.New("Invalid component config extension")
-	ErrVarsPatch  = errors.New("Invalid component vars patch")
+	ErrInvalidExt = errors.New("Invalid config extension")
+	ErrVarsPatch  = errors.New("Invalid vars patch")
 )
 
 type (
-	ConfigData struct {
-		Vars       map[string]interface{} `json:"vars" yaml:"vars"`
-		Templates  map[string]Template    `json:"templates" yaml:"templates"`
-		Components string                 `json:"components" yaml:"components"`
-	}
-
 	Template struct {
 		Path   string `json:"path" yaml:"path"`
 		Output string `json:"output" yaml:"output"`
-	}
-
-	Config struct {
-		Dir        string
-		Base       string
-		ConfigData ConfigData
 	}
 
 	Component struct {
 		Kind string                 `json:"kind" yaml:"kind"`
 		Path string                 `json:"path" yaml:"path"`
 		Vars map[string]interface{} `json:"vars" yaml:"vars"`
+	}
+
+	ConfigData struct {
+		Version    string                 `json:"version" yaml:"version"`
+		Vars       map[string]interface{} `json:"vars" yaml:"vars"`
+		Templates  map[string]Template    `json:"templates" yaml:"templates"`
+		Components string                 `json:"components" yaml:"components"`
+	}
+
+	ComponentData struct {
+		Components map[string]Component `json:"components" yaml:"components"`
+	}
+
+	Config struct {
+		Name       string
+		ConfigData ConfigData
+		Dir        fs.FS
+		Components *template.Template
 	}
 
 	Patch struct {
@@ -58,10 +65,10 @@ type (
 	}
 )
 
-func ParseConfigFile(rootdir fs.FS, path string) (*Config, error) {
-	file, err := rootdir.Open(path)
+func decodeJSONorYAML(fsys fs.FS, path string, target interface{}) error {
+	file, err := fsys.Open(path)
 	if err != nil {
-		return nil, fmt.Errorf("Invalid file %s: %w", path, err)
+		return fmt.Errorf("Invalid file: %w", err)
 	}
 	defer func() {
 		if err := file.Close(); err != nil {
@@ -69,28 +76,48 @@ func ParseConfigFile(rootdir fs.FS, path string) (*Config, error) {
 		}
 	}()
 
-	ext := filepath.Ext(path)
-	base := filepath.Base(path)
-	dir := filepath.Dir(path)
-
-	var config ConfigData
-	switch ext {
+	switch ext := filepath.Ext(path); ext {
 	case fileExtJson:
-		if err := json.NewDecoder(file).Decode(&config); err != nil {
-			return nil, fmt.Errorf("Invalid component config %s: %w", path, err)
+		if err := json.NewDecoder(file).Decode(target); err != nil {
+			return fmt.Errorf("Invalid JSON: %w", err)
 		}
 	case fileExtYaml, fileExtYml:
-		if err := yaml.NewDecoder(file).Decode(&config); err != nil {
-			return nil, fmt.Errorf("Invalid component config %s: %w", path, err)
+		if err := yaml.NewDecoder(file).Decode(target); err != nil {
+			return fmt.Errorf("Invalid YAML: %w", err)
 		}
 	default:
-		return nil, fmt.Errorf("%w: %s", ErrInvalidExt, ext)
+		return fmt.Errorf("%w: %s", ErrInvalidExt, ext)
+	}
+
+	return nil
+}
+
+func ParseConfigFile(fsys fs.FS, path string) (*Config, error) {
+	dirpath := filepath.Dir(path)
+	dir, err := fs.Sub(fsys, dirpath)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to open dir %s: %w", dirpath, err)
+	}
+
+	var config ConfigData
+	if err := decodeJSONorYAML(fsys, path, &config); err != nil {
+		return nil, fmt.Errorf("Invalid config %s: %w", path, err)
+	}
+
+	var components *template.Template
+	if config.Components != "" {
+		var err error
+		components, err = template.New("anvilcomponents").ParseFS(dir, config.Components)
+		if err != nil {
+			return nil, fmt.Errorf("Invalid components config %s: %w", config.Components, err)
+		}
 	}
 
 	return &Config{
-		Dir:        dir,
-		Base:       base,
+		Name:       dirpath,
 		ConfigData: config,
+		Dir:        dir,
+		Components: components,
 	}, nil
 }
 
