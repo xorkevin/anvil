@@ -1,6 +1,7 @@
 package component
 
 import (
+	"io/fs"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -9,18 +10,23 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestParseConfigFile(t *testing.T) {
+func TestConfigFile(t *testing.T) {
 	t.Parallel()
 
 	tabReplacer := strings.NewReplacer("\t", "  ")
 
 	for _, tc := range []struct {
-		Name           string
-		ConfigPath     string
-		ConfigData     string
-		ComponentsPath string
-		ComponentsData string
-		Config         Config
+		Name          string
+		ConfigPath    string
+		ConfigData    string
+		ConfigTplPath string
+		ConfigTplData string
+		TplPath       string
+		TplData       string
+		ConfigFile    ConfigFile
+		Patch         *Patch
+		Files         map[string]string
+		Components    map[string]Component
 	}{
 		{
 			Name:       "full",
@@ -29,16 +35,17 @@ func TestParseConfigFile(t *testing.T) {
 vars:
 	field1:
 		field1sub1: hello, world
+		field1sub2: out.yaml
 
+configtpl: configtpl.yaml
+`,
+			ConfigTplPath: "configtpl.yaml",
+			ConfigTplData: `
 templates:
 	file1:
 		path: file1.yaml
-		output: file1out.yaml
+		output: {{ .Vars.field1.field1sub2 }}
 
-components: components.yaml
-`,
-			ComponentsPath: "components.yaml",
-			ComponentsData: `
 components:
 	comp1:
 		kind: local
@@ -48,21 +55,38 @@ components:
 				field1sub1: some val
 				field1sub2: {{ .Vars.field1.field1sub1 }}
 `,
-			Config: Config{
+			TplPath: "file1.yaml",
+			TplData: `
+file1content: {{ .Vars.field1.field1sub1 }}
+`,
+			ConfigFile: ConfigFile{
 				Name: ".",
 				ConfigData: ConfigData{
 					Vars: map[string]interface{}{
 						"field1": map[string]interface{}{
 							"field1sub1": "hello, world",
+							"field1sub2": "out.yaml",
 						},
 					},
-					Templates: map[string]Template{
-						"file1": {
-							Path:   "file1.yaml",
-							Output: "file1out.yaml",
+					ConfigTpl: "configtpl.yaml",
+				},
+			},
+			Patch: nil,
+			Files: map[string]string{
+				"out.yaml": `
+file1content: hello, world
+`,
+			},
+			Components: map[string]Component{
+				"comp1": {
+					Kind: "local",
+					Path: "subcomp/config.yaml",
+					Vars: map[string]interface{}{
+						"field1": map[string]interface{}{
+							"field1sub1": "some val",
+							"field1sub2": "hello, world",
 						},
 					},
-					Components: "components.yaml",
 				},
 			},
 		},
@@ -72,24 +96,38 @@ components:
 			assert := require.New(t)
 
 			now := time.Now()
+			var filemode fs.FileMode = 0644
 			fsys := fstest.MapFS{
 				tc.ConfigPath: &fstest.MapFile{
 					Data:    []byte(tabReplacer.Replace(tc.ConfigData)),
-					Mode:    0644,
+					Mode:    filemode,
 					ModTime: now,
 				},
-				tc.ComponentsPath: &fstest.MapFile{
-					Data:    []byte(tabReplacer.Replace(tc.ComponentsData)),
-					Mode:    0644,
+				tc.ConfigTplPath: &fstest.MapFile{
+					Data:    []byte(tabReplacer.Replace(tc.ConfigTplData)),
+					Mode:    filemode,
+					ModTime: now,
+				},
+				tc.TplPath: &fstest.MapFile{
+					Data:    []byte(tabReplacer.Replace(tc.TplData)),
+					Mode:    filemode,
 					ModTime: now,
 				},
 			}
 
-			config, err := ParseConfigFile(fsys, tc.ConfigPath)
+			configFile, err := ParseConfigFile(fsys, tc.ConfigPath)
 			assert.NoError(err)
-			assert.NotNil(config)
-			assert.Equal(tc.Config.Name, config.Name)
-			assert.Equal(tc.Config.ConfigData, config.ConfigData)
+			assert.NotNil(configFile)
+			assert.Equal(tc.ConfigFile.Name, configFile.Name)
+			assert.Equal(tc.ConfigFile.ConfigData, configFile.ConfigData)
+			assert.NotNil(configFile.Dir)
+			assert.NotNil(configFile.ConfigTpl)
+
+			writefs := NewWriteFSMock()
+			components, err := configFile.Generate(writefs, tc.Patch)
+			assert.NoError(err)
+			assert.Equal(tc.Components, components)
+			assert.Equal(tc.Files, writefs.Files)
 		})
 	}
 }
@@ -133,7 +171,7 @@ components:
 						"field1sub1": "hello, world",
 					},
 				},
-				Templates: map[string]Template{
+				Templates: map[string]TemplateData{
 					"file1": {
 						Path:   "file1.yaml",
 						Output: "file1out.yaml",
@@ -147,7 +185,7 @@ components:
 								"field2sub2": "other val",
 							},
 						},
-						Templates: map[string]Template{
+						Templates: map[string]TemplateData{
 							"file2": {
 								Path:   "file2.yaml",
 								Output: "file2out.yaml",

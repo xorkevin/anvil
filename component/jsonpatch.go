@@ -20,3 +20,14 @@ func jsonMergePatch(target, patch interface{}) interface{} {
 	}
 	return t
 }
+
+func jsonMergePatchObj(target, patch map[string]interface{}) map[string]interface{} {
+	if len(patch) == 0 {
+		return target
+	}
+	merged, ok := jsonMergePatch(target, patch).(map[string]interface{})
+	if !ok {
+		return target
+	}
+	return merged
+}
