@@ -27,6 +27,11 @@ const (
 	componentKindGit   = "git"
 )
 
+const (
+	generatedFileMode = 0644
+	generatedFileFlag = os.O_RDWR | os.O_CREATE
+)
+
 var (
 	// ErrInvalidExt is returned when attempting to parse a file with an invalid extension
 	ErrInvalidExt = errors.New("Invalid config extension")
@@ -72,6 +77,12 @@ type (
 		Components map[string]ComponentData `json:"components" yaml:"components"`
 	}
 
+	// Template is a parsed template file
+	Template struct {
+		Tpl    *template.Template
+		Output string
+	}
+
 	// Component is a parsed component
 	Component struct {
 		Kind       string
@@ -79,6 +90,13 @@ type (
 		Vars       map[string]interface{}
 		Templates  map[string]TemplateData
 		Components map[string]Patch
+	}
+
+	// Config is a parsed config
+	Config struct {
+		Vars       map[string]interface{}
+		Templates  map[string]Template
+		Components map[string]Component
 	}
 
 	// Patch is the shape of a patch file
@@ -167,6 +185,9 @@ func mergeTemplates(tpls, patch map[string]TemplateData) map[string]TemplateData
 	}
 	for k, v := range patch {
 		t := merged[k]
+		if v.Path != "" {
+			t.Path = v.Path
+		}
 		if v.Output != "" {
 			t.Output = v.Output
 		}
@@ -193,20 +214,19 @@ func mergeComponents(components map[string]ComponentData, patch map[string]Patch
 	return merged
 }
 
-func (c *ConfigFile) Generate(fsys WriteFS, patch *Patch) (map[string]Component, error) {
+func (c *ConfigFile) InitConfig(patch *Patch) (*Config, error) {
 	if patch == nil {
 		patch = &Patch{}
 	}
 
 	vars := jsonMergePatchObj(c.ConfigData.Vars, patch.Vars)
 
-	data := ConfigTplData{
-		Vars: vars,
-	}
-
 	var gencfg GenConfigData
 	if c.ConfigTpl != nil {
 		b := &bytes.Buffer{}
+		data := ConfigTplData{
+			Vars: vars,
+		}
 		if err := c.ConfigTpl.Execute(b, data); err != nil {
 			return nil, fmt.Errorf("Failed to generate config: %w", err)
 		}
@@ -215,13 +235,34 @@ func (c *ConfigFile) Generate(fsys WriteFS, patch *Patch) (map[string]Component,
 		}
 	}
 
-	for _, v := range mergeTemplates(gencfg.Templates, patch.Templates) {
+	tpls := map[string]Template{}
+	for k, v := range mergeTemplates(gencfg.Templates, patch.Templates) {
 		t, err := template.New(v.Path).ParseFS(c.Dir, v.Path)
 		if err != nil {
 			return nil, fmt.Errorf("Invalid template %s: %w", v.Path, err)
 		}
+		tpls[k] = Template{
+			Tpl:    t,
+			Output: v.Output,
+		}
+	}
+
+	components := mergeComponents(gencfg.Components, patch.Components)
+
+	return &Config{
+		Vars:       vars,
+		Templates:  tpls,
+		Components: components,
+	}, nil
+}
+
+func (c *Config) Generate(fsys WriteFS) error {
+	data := ConfigTplData{
+		Vars: c.Vars,
+	}
+	for _, v := range c.Templates {
 		if err := func() error {
-			file, err := fsys.OpenFile(v.Output, os.O_RDWR|os.O_CREATE, 0644)
+			file, err := fsys.OpenFile(v.Output, generatedFileFlag, generatedFileMode)
 			if err != nil {
 				return fmt.Errorf("Invalid file: %w", err)
 			}
@@ -231,7 +272,7 @@ func (c *ConfigFile) Generate(fsys WriteFS, patch *Patch) (map[string]Component,
 				}
 			}()
 			b := bufio.NewWriter(file)
-			if err := t.Execute(b, data); err != nil {
+			if err := v.Tpl.Execute(b, data); err != nil {
 				return fmt.Errorf("Failed to generate template output: %w", err)
 			}
 			if err := b.Flush(); err != nil {
@@ -239,9 +280,8 @@ func (c *ConfigFile) Generate(fsys WriteFS, patch *Patch) (map[string]Component,
 			}
 			return nil
 		}(); err != nil {
-			return nil, err
+			return err
 		}
 	}
-
-	return mergeComponents(gencfg.Components, patch.Components), nil
+	return nil
 }
