@@ -91,8 +91,8 @@ type (
 		Output string
 	}
 
-	// Component is a parsed component
-	Component struct {
+	// Subcomponent is a parsed sub component
+	Subcomponent struct {
 		Kind       string
 		Path       string
 		Vars       map[string]interface{}
@@ -100,11 +100,11 @@ type (
 		Components map[string]Patch
 	}
 
-	// Config is a parsed config
-	Config struct {
+	// Component is an instantiated component
+	Component struct {
 		Vars       map[string]interface{}
 		Templates  map[string]Template
-		Components map[string]Component
+		Components map[string]Subcomponent
 	}
 
 	// Patch is the shape of a patch file
@@ -227,10 +227,10 @@ func mergeTemplates(tpls, patch map[string]TemplateData) map[string]TemplateData
 	return merged
 }
 
-func mergeComponents(components map[string]componentData, patch map[string]Patch) map[string]Component {
-	merged := map[string]Component{}
+func mergeSubcomponents(components map[string]componentData, patch map[string]Patch) map[string]Subcomponent {
+	merged := map[string]Subcomponent{}
 	for k, v := range components {
-		merged[k] = Component{
+		merged[k] = Subcomponent{
 			Kind: v.Kind,
 			Path: v.Path,
 			Vars: v.Vars,
@@ -245,8 +245,8 @@ func mergeComponents(components map[string]componentData, patch map[string]Patch
 	return merged
 }
 
-// InitConfig initializes a config file instance with variables
-func (c *ConfigFile) InitConfig(patch *Patch) (*Config, error) {
+// Init initializes a component instance with variables
+func (c *ConfigFile) Init(patch *Patch) (*Component, error) {
 	if patch == nil {
 		patch = &Patch{}
 	}
@@ -279,9 +279,9 @@ func (c *ConfigFile) InitConfig(patch *Patch) (*Config, error) {
 		}
 	}
 
-	components := mergeComponents(gencfg.Components, patch.Components)
+	components := mergeSubcomponents(gencfg.Components, patch.Components)
 
-	return &Config{
+	return &Component{
 		Vars:       vars,
 		Templates:  tpls,
 		Components: components,
@@ -289,7 +289,7 @@ func (c *ConfigFile) InitConfig(patch *Patch) (*Config, error) {
 }
 
 // Generate writes the generated templated files to a filesystem
-func (c *Config) Generate(fsys WriteFS) error {
+func (c *Component) Generate(fsys WriteFS) error {
 	data := configTplData{
 		Vars: c.Vars,
 	}
