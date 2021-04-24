@@ -70,7 +70,7 @@ file1content: {{ .Vars.field1.field1sub1 }}
 						"field1sub2": "out.yaml",
 					},
 				},
-				Path: "configtpl.yaml",
+				path: "configtpl.yaml",
 			},
 			Patch: nil,
 			Config: Config{
@@ -135,9 +135,11 @@ file1content: hello, world
 			assert.Equal(tc.ConfigFile.Version, configFile.Version)
 			assert.Equal(tc.ConfigFile.Name, configFile.Name)
 			assert.Equal(tc.ConfigFile.Vars, configFile.Vars)
-			assert.Equal(tc.ConfigFile.Path, configFile.Path)
-			assert.NotNil(configFile.Dir)
-			assert.NotNil(configFile.ConfigTpl)
+			assert.Equal(tc.ConfigFile.path, configFile.path)
+			assert.NotNil(configFile.configTpl)
+			assert.NotNil(configFile.tplcache)
+			assert.NotNil(configFile.tplcache.dir)
+			assert.NotNil(configFile.tplcache.cache)
 
 			writefs := NewWriteFSMock()
 			config, err := configFile.InitConfig(tc.Patch)

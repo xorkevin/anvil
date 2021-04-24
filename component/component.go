@@ -38,6 +38,12 @@ var (
 )
 
 type (
+	// templateCache caches parsed templates by path
+	templateCache struct {
+		dir   fs.FS
+		cache map[string]*template.Template
+	}
+
 	// configData is the shape of the component config
 	configData struct {
 		Version   string                 `json:"version" yaml:"version"`
@@ -50,9 +56,9 @@ type (
 		Version   string
 		Name      string
 		Vars      map[string]interface{}
-		Path      string
-		Dir       fs.FS
-		ConfigTpl *template.Template
+		path      string
+		configTpl *template.Template
+		tplcache  *templateCache
 	}
 
 	// configTplData is the input data of a config template
@@ -114,6 +120,25 @@ type (
 	}
 )
 
+func newTemplateCache(dir fs.FS) *templateCache {
+	return &templateCache{
+		dir:   dir,
+		cache: map[string]*template.Template{},
+	}
+}
+
+func (c *templateCache) Parse(path string) (*template.Template, error) {
+	if t, ok := c.cache[path]; ok {
+		return t, nil
+	}
+	t, err := template.New(path).ParseFS(c.dir, path)
+	if err != nil {
+		return nil, fmt.Errorf("Invalid template %s: %w", path, err)
+	}
+	c.cache[path] = t
+	return t, nil
+}
+
 func decodeJSONorYAML(r io.Reader, ext string, target interface{}) error {
 	switch ext {
 	case fileExtJson:
@@ -169,9 +194,9 @@ func ParseConfigFile(fsys fs.FS, path string) (*ConfigFile, error) {
 		Version:   config.Version,
 		Name:      dirpath,
 		Vars:      config.Vars,
-		Path:      config.ConfigTpl,
-		Dir:       dir,
-		ConfigTpl: cfgtpl,
+		path:      config.ConfigTpl,
+		configTpl: cfgtpl,
+		tplcache:  newTemplateCache(dir),
 	}, nil
 }
 
@@ -229,24 +254,24 @@ func (c *ConfigFile) InitConfig(patch *Patch) (*Config, error) {
 	vars := jsonMergePatchObj(c.Vars, patch.Vars)
 
 	var gencfg genConfigData
-	if c.ConfigTpl != nil {
+	if c.configTpl != nil {
 		b := &bytes.Buffer{}
 		data := configTplData{
 			Vars: vars,
 		}
-		if err := c.ConfigTpl.Execute(b, data); err != nil {
+		if err := c.configTpl.Execute(b, data); err != nil {
 			return nil, fmt.Errorf("Failed to generate config: %w", err)
 		}
-		if err := decodeJSONorYAML(b, filepath.Ext(c.Path), &gencfg); err != nil {
-			return nil, fmt.Errorf("Invalid generated config %s: %w", c.Path, err)
+		if err := decodeJSONorYAML(b, filepath.Ext(c.path), &gencfg); err != nil {
+			return nil, fmt.Errorf("Invalid generated config %s: %w", c.path, err)
 		}
 	}
 
 	tpls := map[string]Template{}
 	for k, v := range mergeTemplates(gencfg.Templates, patch.Templates) {
-		t, err := template.New(v.Path).ParseFS(c.Dir, v.Path)
+		t, err := c.tplcache.Parse(v.Path)
 		if err != nil {
-			return nil, fmt.Errorf("Invalid template %s: %w", v.Path, err)
+			return nil, err
 		}
 		tpls[k] = Template{
 			Tpl:    t,
