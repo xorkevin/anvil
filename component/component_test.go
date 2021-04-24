@@ -32,6 +32,8 @@ func TestConfigFile(t *testing.T) {
 			Name:       "full",
 			ConfigPath: "config.yaml",
 			ConfigData: `
+version: xorkevin.dev/anvil/v1alpha1
+
 vars:
 	field1:
 		field1sub1: hello, world
@@ -60,16 +62,15 @@ components:
 file1content: {{ .Vars.field1.field1sub1 }}
 `,
 			ConfigFile: ConfigFile{
-				Name: ".",
-				ConfigData: ConfigData{
-					Vars: map[string]interface{}{
-						"field1": map[string]interface{}{
-							"field1sub1": "hello, world",
-							"field1sub2": "out.yaml",
-						},
+				Version: "xorkevin.dev/anvil/v1alpha1",
+				Name:    ".",
+				Vars: map[string]interface{}{
+					"field1": map[string]interface{}{
+						"field1sub1": "hello, world",
+						"field1sub2": "out.yaml",
 					},
-					ConfigTpl: "configtpl.yaml",
 				},
+				Path: "configtpl.yaml",
 			},
 			Patch: nil,
 			Config: Config{
@@ -131,8 +132,10 @@ file1content: hello, world
 			configFile, err := ParseConfigFile(fsys, tc.ConfigPath)
 			assert.NoError(err)
 			assert.NotNil(configFile)
+			assert.Equal(tc.ConfigFile.Version, configFile.Version)
 			assert.Equal(tc.ConfigFile.Name, configFile.Name)
-			assert.Equal(tc.ConfigFile.ConfigData, configFile.ConfigData)
+			assert.Equal(tc.ConfigFile.Vars, configFile.Vars)
+			assert.Equal(tc.ConfigFile.Path, configFile.Path)
 			assert.NotNil(configFile.Dir)
 			assert.NotNil(configFile.ConfigTpl)
 

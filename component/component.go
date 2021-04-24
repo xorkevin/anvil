@@ -38,8 +38,8 @@ var (
 )
 
 type (
-	// ConfigData is the shape of the component config
-	ConfigData struct {
+	// configData is the shape of the component config
+	configData struct {
 		Version   string                 `json:"version" yaml:"version"`
 		Vars      map[string]interface{} `json:"vars" yaml:"vars"`
 		ConfigTpl string                 `json:"configtpl" yaml:"configtpl"`
@@ -47,14 +47,16 @@ type (
 
 	// ConfigFile represents a parsed component config
 	ConfigFile struct {
-		Name       string
-		ConfigData ConfigData
-		Dir        fs.FS
-		ConfigTpl  *template.Template
+		Version   string
+		Name      string
+		Vars      map[string]interface{}
+		Path      string
+		Dir       fs.FS
+		ConfigTpl *template.Template
 	}
 
-	// ConfigTplData is the input data of a config template
-	ConfigTplData struct {
+	// configTplData is the input data of a config template
+	configTplData struct {
 		Vars map[string]interface{}
 	}
 
@@ -64,17 +66,17 @@ type (
 		Output string `json:"output" yaml:"output"`
 	}
 
-	// ComponentData is the shape of a generated config component
-	ComponentData struct {
+	// componentData is the shape of a generated config component
+	componentData struct {
 		Kind string                 `json:"kind" yaml:"kind"`
 		Path string                 `json:"path" yaml:"path"`
 		Vars map[string]interface{} `json:"vars" yaml:"vars"`
 	}
 
-	// GenConfigData is the shape of a generated config
-	GenConfigData struct {
+	// genConfigData is the shape of a generated config
+	genConfigData struct {
 		Templates  map[string]TemplateData  `json:"templates" yaml:"templates"`
-		Components map[string]ComponentData `json:"components" yaml:"components"`
+		Components map[string]componentData `json:"components" yaml:"components"`
 	}
 
 	// Template is a parsed template file
@@ -141,6 +143,7 @@ func decodeJSONorYAMLFile(fsys fs.FS, path string, target interface{}) error {
 	return decodeJSONorYAML(file, filepath.Ext(path), target)
 }
 
+// ParseConfigFile parses a config file in a filesystem
 func ParseConfigFile(fsys fs.FS, path string) (*ConfigFile, error) {
 	dirpath := filepath.Dir(path)
 	dir, err := fs.Sub(fsys, dirpath)
@@ -148,7 +151,7 @@ func ParseConfigFile(fsys fs.FS, path string) (*ConfigFile, error) {
 		return nil, fmt.Errorf("Failed to open dir %s: %w", dirpath, err)
 	}
 
-	var config ConfigData
+	var config configData
 	if err := decodeJSONorYAMLFile(fsys, path, &config); err != nil {
 		return nil, fmt.Errorf("Invalid config %s: %w", path, err)
 	}
@@ -163,13 +166,16 @@ func ParseConfigFile(fsys fs.FS, path string) (*ConfigFile, error) {
 	}
 
 	return &ConfigFile{
-		Name:       dirpath,
-		ConfigData: config,
-		Dir:        dir,
-		ConfigTpl:  cfgtpl,
+		Version:   config.Version,
+		Name:      dirpath,
+		Vars:      config.Vars,
+		Path:      config.ConfigTpl,
+		Dir:       dir,
+		ConfigTpl: cfgtpl,
 	}, nil
 }
 
+// ParsePatchFile parses a patch file in a filesystem
 func ParsePatchFile(fsys fs.FS, path string) (*Patch, error) {
 	var patch Patch
 	if err := decodeJSONorYAMLFile(fsys, path, &patch); err != nil {
@@ -196,7 +202,7 @@ func mergeTemplates(tpls, patch map[string]TemplateData) map[string]TemplateData
 	return merged
 }
 
-func mergeComponents(components map[string]ComponentData, patch map[string]Patch) map[string]Component {
+func mergeComponents(components map[string]componentData, patch map[string]Patch) map[string]Component {
 	merged := map[string]Component{}
 	for k, v := range components {
 		merged[k] = Component{
@@ -214,24 +220,25 @@ func mergeComponents(components map[string]ComponentData, patch map[string]Patch
 	return merged
 }
 
+// InitConfig initializes a config file instance with variables
 func (c *ConfigFile) InitConfig(patch *Patch) (*Config, error) {
 	if patch == nil {
 		patch = &Patch{}
 	}
 
-	vars := jsonMergePatchObj(c.ConfigData.Vars, patch.Vars)
+	vars := jsonMergePatchObj(c.Vars, patch.Vars)
 
-	var gencfg GenConfigData
+	var gencfg genConfigData
 	if c.ConfigTpl != nil {
 		b := &bytes.Buffer{}
-		data := ConfigTplData{
+		data := configTplData{
 			Vars: vars,
 		}
 		if err := c.ConfigTpl.Execute(b, data); err != nil {
 			return nil, fmt.Errorf("Failed to generate config: %w", err)
 		}
-		if err := decodeJSONorYAML(b, filepath.Ext(c.ConfigData.ConfigTpl), &gencfg); err != nil {
-			return nil, fmt.Errorf("Invalid generated config %s: %w", c.ConfigData.ConfigTpl, err)
+		if err := decodeJSONorYAML(b, filepath.Ext(c.Path), &gencfg); err != nil {
+			return nil, fmt.Errorf("Invalid generated config %s: %w", c.Path, err)
 		}
 	}
 
@@ -256,8 +263,9 @@ func (c *ConfigFile) InitConfig(patch *Patch) (*Config, error) {
 	}, nil
 }
 
+// Generate writes the generated templated files to a filesystem
 func (c *Config) Generate(fsys WriteFS) error {
-	data := ConfigTplData{
+	data := configTplData{
 		Vars: c.Vars,
 	}
 	for _, v := range c.Templates {
