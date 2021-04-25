@@ -11,6 +11,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sort"
 	"text/template"
 
 	"gopkg.in/yaml.v3"
@@ -104,9 +105,8 @@ type (
 
 	// Component is an instantiated component
 	Component struct {
-		Vars       map[string]interface{}
-		Templates  map[string]Template
-		Components map[string]Subcomponent
+		Vars      map[string]interface{}
+		Templates map[string]Template
 	}
 
 	// Patch is the shape of a patch file
@@ -249,7 +249,7 @@ func mergeSubcomponents(components map[string]componentData, patch map[string]Pa
 }
 
 // Init initializes a component instance with variables
-func (c *ConfigFile) Init(patch *Patch) (*Component, error) {
+func (c *ConfigFile) Init(patch *Patch) (*Component, []Subcomponent, error) {
 	if patch == nil {
 		patch = &Patch{}
 	}
@@ -263,10 +263,10 @@ func (c *ConfigFile) Init(patch *Patch) (*Component, error) {
 			Vars: vars,
 		}
 		if err := c.configTpl.Execute(b, data); err != nil {
-			return nil, fmt.Errorf("Failed to generate config: %w", err)
+			return nil, nil, fmt.Errorf("Failed to generate config: %w", err)
 		}
 		if err := decodeJSONorYAML(b, filepath.Ext(c.path), &gencfg); err != nil {
-			return nil, fmt.Errorf("Invalid generated config %s: %w", c.path, err)
+			return nil, nil, fmt.Errorf("Invalid generated config %s: %w", c.path, err)
 		}
 	}
 
@@ -274,7 +274,7 @@ func (c *ConfigFile) Init(patch *Patch) (*Component, error) {
 	for k, v := range mergeTemplates(gencfg.Templates, patch.Templates) {
 		t, err := c.tplcache.Parse(v.Path)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		tpls[k] = Template{
 			Tpl:    t,
@@ -283,12 +283,20 @@ func (c *ConfigFile) Init(patch *Patch) (*Component, error) {
 	}
 
 	components := mergeSubcomponents(gencfg.Components, patch.Components)
+	keys := make([]string, 0, len(components))
+	for k := range components {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	deps := make([]Subcomponent, 0, len(components))
+	for _, i := range keys {
+		deps = append(deps, components[i])
+	}
 
 	return &Component{
-		Vars:       vars,
-		Templates:  tpls,
-		Components: components,
-	}, nil
+		Vars:      vars,
+		Templates: tpls,
+	}, deps, nil
 }
 
 // Patch returns the subcomponent patch

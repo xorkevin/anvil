@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"sort"
 )
 
 var (
@@ -83,29 +82,23 @@ func parseComponentTreeRec(repo, path string, patch *Patch, parents []repoPath, 
 	if err != nil {
 		return nil, err
 	}
-	component, err := config.Init(patch)
+	component, deps, err := config.Init(patch)
 	if err != nil {
 		return nil, err
 	}
 
-	components := make([]Component, 0, len(component.Components)+1)
-	keys := make([]string, 0, len(component.Components))
-	for k := range component.Components {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	for _, k := range keys {
-		comp := component.Components[k]
+	components := make([]Component, 0, len(deps)+1)
+	for _, i := range deps {
 		var subrepo string
-		switch comp.Kind {
+		switch i.Kind {
 		case componentKindLocal:
 			subrepo = repo
 		case componentKindGit:
-			subrepo = comp.Repo
+			subrepo = i.Repo
 		default:
-			return nil, fmt.Errorf("%w: %s", ErrInvalidComponentKind, comp.Kind)
+			return nil, fmt.Errorf("%w: %s", ErrInvalidComponentKind, i.Kind)
 		}
-		children, err := parseComponentTreeRec(subrepo, comp.Path, comp.Patch(), parents, cache)
+		children, err := parseComponentTreeRec(subrepo, i.Path, i.Patch(), parents, cache)
 		if err != nil {
 			return nil, err
 		}

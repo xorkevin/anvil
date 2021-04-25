@@ -26,6 +26,7 @@ func TestConfigFile(t *testing.T) {
 		ConfigFile    ConfigFile
 		Patch         *Patch
 		Component     Component
+		Deps          []Subcomponent
 		Files         map[string]string
 	}{
 		{
@@ -85,15 +86,15 @@ file1content: {{ .Vars.field1.field1sub1 }}
 						Output: "out.yaml",
 					},
 				},
-				Components: map[string]Subcomponent{
-					"comp1": {
-						Kind: "local",
-						Path: "subcomp/config.yaml",
-						Vars: map[string]interface{}{
-							"field1": map[string]interface{}{
-								"field1sub1": "some val",
-								"field1sub2": "hello, world",
-							},
+			},
+			Deps: []Subcomponent{
+				{
+					Kind: "local",
+					Path: "subcomp/config.yaml",
+					Vars: map[string]interface{}{
+						"field1": map[string]interface{}{
+							"field1sub1": "some val",
+							"field1sub2": "hello, world",
 						},
 					},
 				},
@@ -142,14 +143,14 @@ file1content: hello, world
 			assert.NotNil(configFile.tplcache.cache)
 
 			writefs := NewWriteFSMock()
-			component, err := configFile.Init(tc.Patch)
+			component, deps, err := configFile.Init(tc.Patch)
 			assert.NoError(err)
 			assert.Equal(tc.Component.Vars, component.Vars)
 			assert.Len(component.Templates, len(tc.Component.Templates))
 			for k, v := range component.Templates {
 				assert.Equal(tc.Component.Templates[k].Output, v.Output)
 			}
-			assert.Equal(tc.Component.Components, component.Components)
+			assert.Equal(tc.Deps, deps)
 			assert.NoError(component.Generate(writefs))
 			assert.Equal(tc.Files, writefs.Files)
 		})
