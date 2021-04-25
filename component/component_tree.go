@@ -10,6 +10,8 @@ import (
 var (
 	// ErrInvalidComponentKind is returned when attempting to parse a component with an invalid kind
 	ErrInvalidComponentKind = errors.New("Invalid component kind")
+	// ErrImportCycle is returned when component dependencies form a cycle
+	ErrImportCycle = errors.New("Import cycle")
 )
 
 type (
@@ -26,6 +28,10 @@ type (
 		cache   map[repoPath]*ConfigFile
 	}
 )
+
+func (r repoPath) String() string {
+	return fmt.Sprintf("%s:%s", r.repo, r.path)
+}
 
 func newConfigFileCache(localfs fs.FS, gitfs fs.FS) *configFileCache {
 	return &configFileCache{
@@ -61,7 +67,18 @@ func (c *configFileCache) Parse(repo, path string) (*ConfigFile, error) {
 	return f, nil
 }
 
-func parseComponentTreeRec(repo, path string, patch *Patch, cache *configFileCache) ([]Component, error) {
+func parseComponentTreeRec(repo, path string, patch *Patch, parents []repoPath, cache *configFileCache) ([]Component, error) {
+	current := repoPath{
+		repo: repo,
+		path: path,
+	}
+	for _, i := range parents {
+		if current == i {
+			return nil, fmt.Errorf("%w: %s -> %s", ErrImportCycle, parents[len(parents)-1], current)
+		}
+	}
+	parents = append(parents, current)
+
 	config, err := cache.Parse(repo, path)
 	if err != nil {
 		return nil, err
@@ -70,6 +87,7 @@ func parseComponentTreeRec(repo, path string, patch *Patch, cache *configFileCac
 	if err != nil {
 		return nil, err
 	}
+
 	subcomponents := make([]Component, 0, len(component.Components)+1)
 	subkeys := make([]string, 0, len(component.Components))
 	for k := range component.Components {
@@ -77,21 +95,21 @@ func parseComponentTreeRec(repo, path string, patch *Patch, cache *configFileCac
 	}
 	sort.Strings(subkeys)
 	for _, k := range subkeys {
-		sub := component.Components[k]
+		comp := component.Components[k]
 		var subrepo string
-		switch sub.Kind {
+		switch comp.Kind {
 		case componentKindLocal:
 			subrepo = repo
 		case componentKindGit:
-			subrepo = sub.Repo
+			subrepo = comp.Repo
 		default:
-			return nil, fmt.Errorf("%w: %s", ErrInvalidComponentKind, sub.Kind)
+			return nil, fmt.Errorf("%w: %s", ErrInvalidComponentKind, comp.Kind)
 		}
-		comps, err := parseComponentTreeRec(subrepo, sub.Path, sub.Patch(), cache)
+		children, err := parseComponentTreeRec(subrepo, comp.Path, comp.Patch(), parents, cache)
 		if err != nil {
 			return nil, err
 		}
-		subcomponents = append(subcomponents, comps...)
+		subcomponents = append(subcomponents, children...)
 	}
 	subcomponents = append(subcomponents, *component)
 	return subcomponents, nil
@@ -99,5 +117,5 @@ func parseComponentTreeRec(repo, path string, patch *Patch, cache *configFileCac
 
 // ParseComponentTree parses a component tree
 func ParseComponentTree(localfs, gitfs fs.FS, path string, patch *Patch) ([]Component, error) {
-	return parseComponentTreeRec("", path, patch, newConfigFileCache(localfs, gitfs))
+	return parseComponentTreeRec("", path, patch, nil, newConfigFileCache(localfs, gitfs))
 }
