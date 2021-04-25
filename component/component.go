@@ -75,6 +75,7 @@ type (
 	// componentData is the shape of a generated config component
 	componentData struct {
 		Kind string                 `json:"kind" yaml:"kind"`
+		Repo string                 `json:"repo,omitempty" yaml:"repo,omitempty"`
 		Path string                 `json:"path" yaml:"path"`
 		Vars map[string]interface{} `json:"vars" yaml:"vars"`
 	}
@@ -94,6 +95,7 @@ type (
 	// Subcomponent is a parsed sub component
 	Subcomponent struct {
 		Kind       string
+		Repo       string
 		Path       string
 		Vars       map[string]interface{}
 		Templates  map[string]TemplateData
@@ -232,6 +234,7 @@ func mergeSubcomponents(components map[string]componentData, patch map[string]Pa
 	for k, v := range components {
 		merged[k] = Subcomponent{
 			Kind: v.Kind,
+			Repo: v.Repo,
 			Path: v.Path,
 			Vars: v.Vars,
 		}
@@ -286,6 +289,15 @@ func (c *ConfigFile) Init(patch *Patch) (*Component, error) {
 		Templates:  tpls,
 		Components: components,
 	}, nil
+}
+
+// Patch returns the subcomponent patch
+func (s *Subcomponent) Patch() *Patch {
+	return &Patch{
+		Vars:       s.Vars,
+		Templates:  s.Templates,
+		Components: s.Components,
+	}
 }
 
 // Generate writes the generated templated files to a filesystem
