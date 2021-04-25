@@ -88,13 +88,13 @@ func parseComponentTreeRec(repo, path string, patch *Patch, parents []repoPath, 
 		return nil, err
 	}
 
-	subcomponents := make([]Component, 0, len(component.Components)+1)
-	subkeys := make([]string, 0, len(component.Components))
+	components := make([]Component, 0, len(component.Components)+1)
+	keys := make([]string, 0, len(component.Components))
 	for k := range component.Components {
-		subkeys = append(subkeys, k)
+		keys = append(keys, k)
 	}
-	sort.Strings(subkeys)
-	for _, k := range subkeys {
+	sort.Strings(keys)
+	for _, k := range keys {
 		comp := component.Components[k]
 		var subrepo string
 		switch comp.Kind {
@@ -109,10 +109,10 @@ func parseComponentTreeRec(repo, path string, patch *Patch, parents []repoPath, 
 		if err != nil {
 			return nil, err
 		}
-		subcomponents = append(subcomponents, children...)
+		components = append(components, children...)
 	}
-	subcomponents = append(subcomponents, *component)
-	return subcomponents, nil
+	components = append(components, *component)
+	return components, nil
 }
 
 // ParseComponentTree parses a component tree
