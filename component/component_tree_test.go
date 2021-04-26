@@ -29,8 +29,8 @@ func TestComponentTree(t *testing.T) {
 		SubConfigTplData string
 		SubTplPath       string
 		SubTplData       string
-		Components       []Component
-		Patch            *Patch
+		PatchPath        string
+		PatchData        string
 		Files            map[string]string
 	}{
 		{
@@ -89,35 +89,6 @@ templates:
 file1field1: {{ .Vars.field1.field1sub1 }}
 file1field2: {{ .Vars.field1.field1sub2 }}
 `,
-			Components: []Component{
-				{
-					Vars: map[string]interface{}{
-						"field1": map[string]interface{}{
-							"field1sub1": "some val",
-							"field1sub2": "hello, world",
-						},
-					},
-					Templates: map[string]Template{
-						"file1": {
-							Output: "subout.yaml",
-						},
-					},
-				},
-				{
-					Vars: map[string]interface{}{
-						"field1": map[string]interface{}{
-							"field1sub1": "hello, world",
-							"field1sub2": "out.yaml",
-						},
-					},
-					Templates: map[string]Template{
-						"file1": {
-							Output: "out.yaml",
-						},
-					},
-				},
-			},
-			Patch: nil,
 			Files: map[string]string{
 				"out.yaml": `
 file1content: hello, world
@@ -168,22 +139,8 @@ file1field2: hello, world
 				},
 			}
 
-			components, err := ParseComponentTree(fsys, nil, tc.ConfigPath, tc.Patch)
-			assert.NoError(err)
-			assert.Len(components, len(tc.Components))
-			for n, i := range components {
-				expected := tc.Components[n]
-				assert.Equal(expected.Vars, i.Vars)
-				assert.Len(i.Templates, len(expected.Templates))
-				for k, v := range i.Templates {
-					assert.Equal(expected.Templates[k].Output, v.Output)
-				}
-			}
-
 			writefs := NewWriteFSMock()
-			for _, i := range components {
-				assert.NoError(i.Generate(writefs))
-			}
+			assert.NoError(GenerateComponents(writefs, fsys, nil, tc.ConfigPath, tc.PatchPath))
 			assert.Equal(tc.Files, writefs.Files)
 		})
 	}
