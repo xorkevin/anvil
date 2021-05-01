@@ -115,24 +115,41 @@ func ParseComponentTree(localfs, remotefs fs.FS, path string, patch *Patch) ([]C
 	return parseComponentTreeRec("", path, patch, nil, newConfigFileCache(localfs, remotefs))
 }
 
-// GenerateComponents generates components and writes them to an output fs
-func GenerateComponents(outputfs WriteFS, localfs, remotefs fs.FS, path, patchpath string) error {
+// ParseComponents parses components
+func ParseComponents(outputfs WriteFS, localfs, remotefs fs.FS, path, patchpath string) ([]Component, error) {
 	var patch *Patch
 	if patchpath != "" {
 		var err error
 		patch, err = ParsePatchFile(localfs, patchpath)
 		if err != nil {
-			return err
+			return nil, err
 		}
 	}
 	components, err := ParseComponentTree(localfs, remotefs, path, patch)
 	if err != nil {
-		return err
+		return nil, err
 	}
+	return components, nil
+}
+
+// WriteComponents writes components to an output fs
+func WriteComponents(outputfs WriteFS, components []Component) error {
 	for _, i := range components {
 		if err := i.Generate(outputfs); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+// GenerateComponents generates components
+func GenerateComponents(outputfs WriteFS, localfs, remotefs fs.FS, path, patchpath string) error {
+	components, err := ParseComponents(outputfs, localfs, remotefs, path, patchpath)
+	if err != nil {
+		return err
+	}
+	if err := WriteComponents(outputfs, components); err != nil {
+		return err
 	}
 	return nil
 }
@@ -148,10 +165,14 @@ func Generate(output, local, remote, path, patchpath string) error {
 		return fmt.Errorf("Failed to construct relative path: %w", err)
 	}
 	if patchpath != "" {
+		var err error
 		patchpath, err = filepath.Rel(local, patchpath)
 		if err != nil {
 			return fmt.Errorf("Failed to construct relative path: %w", err)
 		}
 	}
-	return GenerateComponents(outputfs, localfs, remotefs, path, patchpath)
+	if err := GenerateComponents(outputfs, localfs, remotefs, path, patchpath); err != nil {
+		return err
+	}
+	return nil
 }
