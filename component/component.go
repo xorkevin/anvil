@@ -77,6 +77,7 @@ type (
 	componentData struct {
 		Kind string                 `json:"kind" yaml:"kind"`
 		Repo string                 `json:"repo,omitempty" yaml:"repo,omitempty"`
+		Ref  string                 `json:"ref,omitempty" yaml:"ref,omitempty"`
 		Path string                 `json:"path" yaml:"path"`
 		Vars map[string]interface{} `json:"vars" yaml:"vars"`
 	}
@@ -93,11 +94,17 @@ type (
 		Output string
 	}
 
+	// RepoPath represents a repo component path
+	RepoPath struct {
+		Repo string
+		Ref  string
+		Path string
+	}
+
 	// Subcomponent is a parsed sub component
 	Subcomponent struct {
 		Kind       string
-		Repo       string
-		Path       string
+		Path       RepoPath
 		Vars       map[string]interface{}
 		Templates  map[string]TemplateData
 		Components map[string]Patch
@@ -234,8 +241,11 @@ func mergeSubcomponents(components map[string]componentData, patch map[string]Pa
 	for k, v := range components {
 		merged[k] = Subcomponent{
 			Kind: v.Kind,
-			Repo: v.Repo,
-			Path: v.Path,
+			Path: RepoPath{
+				Repo: v.Repo,
+				Ref:  v.Ref,
+				Path: v.Path,
+			},
 			Vars: v.Vars,
 		}
 	}
