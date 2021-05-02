@@ -1,6 +1,7 @@
 package component
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -25,10 +26,6 @@ type (
 	}
 )
 
-func (r RepoPath) String() string {
-	return fmt.Sprintf("[%s] %s (%s) %s", r.Kind, r.Repo, r.Ref, r.Path)
-}
-
 func newConfigFileCache(localfs, remotefs fs.FS, fetcher Fetcher) *configFileCache {
 	return &configFileCache{
 		localfs:  localfs,
@@ -38,7 +35,7 @@ func newConfigFileCache(localfs, remotefs fs.FS, fetcher Fetcher) *configFileCac
 	}
 }
 
-func (c *configFileCache) Parse(path RepoPath) (*ConfigFile, error) {
+func (c *configFileCache) Parse(ctx context.Context, path RepoPath) (*ConfigFile, error) {
 	if f, ok := c.cache[path]; ok {
 		return f, nil
 	}
@@ -46,7 +43,7 @@ func (c *configFileCache) Parse(path RepoPath) (*ConfigFile, error) {
 	if path.Repo == "" {
 		fsys = c.localfs
 	} else {
-		if err := c.fetcher.Fetch(path.Kind, path.Repo, path.Ref); err != nil {
+		if err := c.fetcher.Fetch(ctx, path.Kind, path.Repo, path.Ref); err != nil {
 			return nil, err
 		}
 		var err error
@@ -63,7 +60,7 @@ func (c *configFileCache) Parse(path RepoPath) (*ConfigFile, error) {
 	return f, nil
 }
 
-func parseComponentTreeRec(path RepoPath, patch *Patch, parents []RepoPath, cache *configFileCache) ([]Component, error) {
+func parseComponentTreeRec(ctx context.Context, path RepoPath, patch *Patch, parents []RepoPath, cache *configFileCache) ([]Component, error) {
 	for _, i := range parents {
 		if path == i {
 			return nil, fmt.Errorf("%w: %s -> %s", ErrImportCycle, parents[len(parents)-1], path)
@@ -71,7 +68,7 @@ func parseComponentTreeRec(path RepoPath, patch *Patch, parents []RepoPath, cach
 	}
 	parents = append(parents, path)
 
-	config, err := cache.Parse(path)
+	config, err := cache.Parse(ctx, path)
 	if err != nil {
 		return nil, err
 	}
@@ -91,7 +88,7 @@ func parseComponentTreeRec(path RepoPath, patch *Patch, parents []RepoPath, cach
 		default:
 			return nil, fmt.Errorf("%w: %s", ErrInvalidComponentKind, i.Path.Kind)
 		}
-		children, err := parseComponentTreeRec(subpath, i.Patch(), parents, cache)
+		children, err := parseComponentTreeRec(ctx, subpath, i.Patch(), parents, cache)
 		if err != nil {
 			return nil, err
 		}
@@ -102,16 +99,15 @@ func parseComponentTreeRec(path RepoPath, patch *Patch, parents []RepoPath, cach
 }
 
 // ParseComponentTree parses a component tree
-func ParseComponentTree(localfs, remotefs fs.FS, fetcher Fetcher, path string, patch *Patch) ([]Component, error) {
-	return parseComponentTreeRec(RepoPath{
+func ParseComponentTree(ctx context.Context, localfs, remotefs fs.FS, fetcher Fetcher, path string, patch *Patch) ([]Component, error) {
+	return parseComponentTreeRec(ctx, RepoPath{
 		Repo: "",
-		Ref:  "",
 		Path: path,
 	}, patch, nil, newConfigFileCache(localfs, remotefs, fetcher))
 }
 
 // ParseComponents parses components
-func ParseComponents(outputfs WriteFS, localfs, remotefs fs.FS, fetcher Fetcher, path, patchpath string) ([]Component, error) {
+func ParseComponents(ctx context.Context, outputfs WriteFS, localfs, remotefs fs.FS, fetcher Fetcher, path, patchpath string) ([]Component, error) {
 	var patch *Patch
 	if patchpath != "" {
 		var err error
@@ -120,7 +116,7 @@ func ParseComponents(outputfs WriteFS, localfs, remotefs fs.FS, fetcher Fetcher,
 			return nil, err
 		}
 	}
-	components, err := ParseComponentTree(localfs, remotefs, fetcher, path, patch)
+	components, err := ParseComponentTree(ctx, localfs, remotefs, fetcher, path, patch)
 	if err != nil {
 		return nil, err
 	}
@@ -138,8 +134,8 @@ func WriteComponents(outputfs WriteFS, components []Component) error {
 }
 
 // GenerateComponents generates components
-func GenerateComponents(outputfs WriteFS, localfs, remotefs fs.FS, fetcher Fetcher, path, patchpath string) error {
-	components, err := ParseComponents(outputfs, localfs, remotefs, fetcher, path, patchpath)
+func GenerateComponents(ctx context.Context, outputfs WriteFS, localfs, remotefs fs.FS, fetcher Fetcher, path, patchpath string) error {
+	components, err := ParseComponents(ctx, outputfs, localfs, remotefs, fetcher, path, patchpath)
 	if err != nil {
 		return err
 	}
@@ -149,12 +145,19 @@ func GenerateComponents(outputfs WriteFS, localfs, remotefs fs.FS, fetcher Fetch
 	return nil
 }
 
+type (
+	// Opts holds generation opts
+	Opts struct {
+		GitPartialClone bool
+	}
+)
+
 // Generate reads configs and writes components to the filesystem
-func Generate(output, local, remote, path, patchpath string) error {
+func Generate(ctx context.Context, output, local, remote, path, patchpath string, opts Opts) error {
 	outputfs := NewOSWriteFS(output)
 	localfs := os.DirFS(local)
 	remotefs := os.DirFS(remote)
-	fetcher := NewOSFetcher(remote)
+	fetcher := NewOSFetcher(remote, opts)
 	var err error
 	path, err = filepath.Rel(local, path)
 	if err != nil {
@@ -167,7 +170,7 @@ func Generate(output, local, remote, path, patchpath string) error {
 			return fmt.Errorf("Failed to construct relative path: %w", err)
 		}
 	}
-	if err := GenerateComponents(outputfs, localfs, remotefs, fetcher, path, patchpath); err != nil {
+	if err := GenerateComponents(ctx, outputfs, localfs, remotefs, fetcher, path, patchpath); err != nil {
 		return err
 	}
 	return nil

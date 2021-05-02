@@ -1,6 +1,7 @@
 package component
 
 import (
+	"context"
 	"io/fs"
 	"strings"
 	"testing"
@@ -140,7 +141,7 @@ file1field2: hello, world
 			}
 
 			writefs := NewWriteFSMock()
-			assert.NoError(GenerateComponents(writefs, fsys, nil, nil, tc.ConfigPath, tc.PatchPath))
+			assert.NoError(GenerateComponents(context.Background(), writefs, fsys, nil, nil, tc.ConfigPath, tc.PatchPath))
 			assert.Equal(tc.Files, writefs.Files)
 		})
 	}

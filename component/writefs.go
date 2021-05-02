@@ -9,6 +9,12 @@ import (
 )
 
 type (
+	// WriteFS is a file system that may be read from and written to
+	WriteFS interface {
+		OpenFile(name string, flag int, perm fs.FileMode) (io.WriteCloser, error)
+	}
+
+	// OSWriteFS implements WriteFS with the os file system
 	OSWriteFS struct {
 		Base string
 	}

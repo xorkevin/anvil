@@ -122,12 +122,11 @@ type (
 		Templates  map[string]TemplateData `json:"templates" yaml:"templates"`
 		Components map[string]Patch        `json:"components" yaml:"components"`
 	}
-
-	// WriteFS is a file system that may be read from and written to
-	WriteFS interface {
-		OpenFile(name string, flag int, perm fs.FileMode) (io.WriteCloser, error)
-	}
 )
+
+func (r RepoPath) String() string {
+	return fmt.Sprintf("[%s] %s (%s) %s", r.Kind, r.Repo, r.Ref, r.Path)
+}
 
 func newTemplateCache(dir fs.FS) *templateCache {
 	return &templateCache{
@@ -327,7 +326,7 @@ func (c *Component) Generate(fsys WriteFS) error {
 		if err := func() error {
 			file, err := fsys.OpenFile(v.Output, generatedFileFlag, generatedFileMode)
 			if err != nil {
-				return fmt.Errorf("Invalid file: %w", err)
+				return fmt.Errorf("Invalid file %s: %w", v.Output, err)
 			}
 			defer func() {
 				if err := file.Close(); err != nil {
