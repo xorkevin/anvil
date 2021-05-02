@@ -89,8 +89,8 @@ file1content: {{ .Vars.field1.field1sub1 }}
 			},
 			Deps: []Subcomponent{
 				{
-					Kind: "local",
 					Path: RepoPath{
+						Kind: "local",
 						Path: "subcomp/config.yaml",
 					},
 					Vars: map[string]interface{}{

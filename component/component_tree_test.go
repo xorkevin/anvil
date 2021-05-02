@@ -140,7 +140,7 @@ file1field2: hello, world
 			}
 
 			writefs := NewWriteFSMock()
-			assert.NoError(GenerateComponents(writefs, fsys, nil, tc.ConfigPath, tc.PatchPath))
+			assert.NoError(GenerateComponents(writefs, fsys, nil, nil, tc.ConfigPath, tc.PatchPath))
 			assert.Equal(tc.Files, writefs.Files)
 		})
 	}

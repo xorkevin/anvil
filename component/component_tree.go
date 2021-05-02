@@ -20,18 +20,20 @@ type (
 	configFileCache struct {
 		localfs  fs.FS
 		remotefs fs.FS
+		fetcher  Fetcher
 		cache    map[RepoPath]*ConfigFile
 	}
 )
 
 func (r RepoPath) String() string {
-	return fmt.Sprintf("%s:%s:%s", r.Repo, r.Ref, r.Path)
+	return fmt.Sprintf("[%s] %s (%s) %s", r.Kind, r.Repo, r.Ref, r.Path)
 }
 
-func newConfigFileCache(localfs fs.FS, remotefs fs.FS) *configFileCache {
+func newConfigFileCache(localfs, remotefs fs.FS, fetcher Fetcher) *configFileCache {
 	return &configFileCache{
 		localfs:  localfs,
 		remotefs: remotefs,
+		fetcher:  fetcher,
 		cache:    map[RepoPath]*ConfigFile{},
 	}
 }
@@ -44,6 +46,9 @@ func (c *configFileCache) Parse(path RepoPath) (*ConfigFile, error) {
 	if path.Repo == "" {
 		fsys = c.localfs
 	} else {
+		if err := c.fetcher.Fetch(path.Kind, path.Repo, path.Ref); err != nil {
+			return nil, err
+		}
 		var err error
 		fsys, err = fs.Sub(c.remotefs, path.Repo)
 		if err != nil {
@@ -78,13 +83,13 @@ func parseComponentTreeRec(path RepoPath, patch *Patch, parents []RepoPath, cach
 	components := make([]Component, 0, len(deps)+1)
 	for _, i := range deps {
 		subpath := i.Path
-		switch i.Kind {
+		switch i.Path.Kind {
 		case componentKindLocal:
 			subpath.Repo = path.Repo
 		case componentKindGit:
 			subpath.Repo = i.Path.Repo
 		default:
-			return nil, fmt.Errorf("%w: %s", ErrInvalidComponentKind, i.Kind)
+			return nil, fmt.Errorf("%w: %s", ErrInvalidComponentKind, i.Path.Kind)
 		}
 		children, err := parseComponentTreeRec(subpath, i.Patch(), parents, cache)
 		if err != nil {
@@ -97,16 +102,16 @@ func parseComponentTreeRec(path RepoPath, patch *Patch, parents []RepoPath, cach
 }
 
 // ParseComponentTree parses a component tree
-func ParseComponentTree(localfs, remotefs fs.FS, path string, patch *Patch) ([]Component, error) {
+func ParseComponentTree(localfs, remotefs fs.FS, fetcher Fetcher, path string, patch *Patch) ([]Component, error) {
 	return parseComponentTreeRec(RepoPath{
 		Repo: "",
 		Ref:  "",
 		Path: path,
-	}, patch, nil, newConfigFileCache(localfs, remotefs))
+	}, patch, nil, newConfigFileCache(localfs, remotefs, fetcher))
 }
 
 // ParseComponents parses components
-func ParseComponents(outputfs WriteFS, localfs, remotefs fs.FS, path, patchpath string) ([]Component, error) {
+func ParseComponents(outputfs WriteFS, localfs, remotefs fs.FS, fetcher Fetcher, path, patchpath string) ([]Component, error) {
 	var patch *Patch
 	if patchpath != "" {
 		var err error
@@ -115,7 +120,7 @@ func ParseComponents(outputfs WriteFS, localfs, remotefs fs.FS, path, patchpath 
 			return nil, err
 		}
 	}
-	components, err := ParseComponentTree(localfs, remotefs, path, patch)
+	components, err := ParseComponentTree(localfs, remotefs, fetcher, path, patch)
 	if err != nil {
 		return nil, err
 	}
@@ -133,8 +138,8 @@ func WriteComponents(outputfs WriteFS, components []Component) error {
 }
 
 // GenerateComponents generates components
-func GenerateComponents(outputfs WriteFS, localfs, remotefs fs.FS, path, patchpath string) error {
-	components, err := ParseComponents(outputfs, localfs, remotefs, path, patchpath)
+func GenerateComponents(outputfs WriteFS, localfs, remotefs fs.FS, fetcher Fetcher, path, patchpath string) error {
+	components, err := ParseComponents(outputfs, localfs, remotefs, fetcher, path, patchpath)
 	if err != nil {
 		return err
 	}
@@ -149,6 +154,7 @@ func Generate(output, local, remote, path, patchpath string) error {
 	outputfs := NewOSWriteFS(output)
 	localfs := os.DirFS(local)
 	remotefs := os.DirFS(remote)
+	fetcher := NewOSFetcher(remote)
 	var err error
 	path, err = filepath.Rel(local, path)
 	if err != nil {
@@ -161,7 +167,7 @@ func Generate(output, local, remote, path, patchpath string) error {
 			return fmt.Errorf("Failed to construct relative path: %w", err)
 		}
 	}
-	if err := GenerateComponents(outputfs, localfs, remotefs, path, patchpath); err != nil {
+	if err := GenerateComponents(outputfs, localfs, remotefs, fetcher, path, patchpath); err != nil {
 		return err
 	}
 	return nil
