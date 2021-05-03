@@ -24,17 +24,30 @@ var (
 	ErrCacheNotGitRepo = errors.New("Cache dir is not git repo")
 	// ErrGitBinVersion is returned when a git binary is not the correct version
 	ErrGitBinVersion = errors.New("Invalid git version")
+	// ErrNetworkRequired is returned when a network call is required but the NoNetwork opt is enabled
+	ErrNetworkRequired = errors.New("Network required")
 )
 
 type (
 	Fetcher interface {
-		Fetch(ctx context.Context, kind, repo, ref string) error
+		Fetch(ctx context.Context, kind, repo, ref string) (string, error)
+	}
+
+	repoCacheKey struct {
+		kind string
+		repo string
+	}
+
+	repoCacheState struct {
+		ref      string
+		repopath string
 	}
 
 	OSFetcher struct {
 		Base         string
 		PathReplacer *strings.Replacer
 		Opts         Opts
+		cache        map[repoCacheKey]repoCacheState
 	}
 )
 
@@ -43,59 +56,98 @@ func NewOSFetcher(base string, opts Opts) *OSFetcher {
 		Base:         base,
 		PathReplacer: strings.NewReplacer("/", "_"),
 		Opts:         opts,
+		cache:        map[repoCacheKey]repoCacheState{},
 	}
 }
 
-func (o *OSFetcher) Fetch(ctx context.Context, kind, repo, ref string) error {
+func (o *OSFetcher) Fetch(ctx context.Context, kind, repo, ref string) (string, error) {
+	key := repoCacheKey{
+		kind: kind,
+		repo: repo,
+	}
+	needUpdate := true
+	if s, ok := o.cache[key]; ok {
+		if s.ref == ref {
+			return "", nil
+		}
+		needUpdate = false
+	}
+	var repopath string
 	switch kind {
 	case componentKindGit:
+		var err error
+		repopath, err = o.FetchGit(ctx, repo, ref, needUpdate)
+		if err != nil {
+			return "", err
+		}
+	default:
+		return "", fmt.Errorf("%w: %s", ErrInvalidComponentKind, kind)
 	}
-	return nil
+	o.cache[key] = repoCacheState{
+		ref:      ref,
+		repopath: repopath,
+	}
+	return repopath, nil
 }
 
-func (o *OSFetcher) FetchGit(ctx context.Context, repo, ref string) error {
-	if _, err := exec.LookPath(binGit); err != nil {
-		return fmt.Errorf("%s not found in PATH: %w", binGit, err)
-	}
+func (o *OSFetcher) repoPathGit(repo string) (string, error) {
 	repodir := o.PathReplacer.Replace(repo)
 	if fs.ValidPath(repodir) {
-		return fmt.Errorf("Invalid repo %s: %w", repo, fs.ErrInvalid)
+		return "", fmt.Errorf("Invalid repo %s: %w", repo, fs.ErrInvalid)
 	}
-	repopath := filepath.Join(o.Base, "git", repodir)
+	return filepath.Join("git", repodir), nil
+}
+
+func (o *OSFetcher) FetchGit(ctx context.Context, repo, ref string, needUpdate bool) (string, error) {
+	if _, err := exec.LookPath(binGit); err != nil {
+		return "", fmt.Errorf("%s not found in PATH: %w", binGit, err)
+	}
+	retrepopath, err := o.repoPathGit(repo)
+	if err != nil {
+		return "", err
+	}
+	repopath := filepath.Join(o.Base, retrepopath)
 	info, err := os.Stat(repopath)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return fmt.Errorf("Failed to check if %s already cloned: %w", repo, err)
+		return "", fmt.Errorf("Failed to check if %s already cloned: %w", repo, err)
 	}
 	alreadyCloned := err == nil
 	if !info.IsDir() {
-		return fmt.Errorf("%w: %s", ErrCacheNotGitRepo, repopath)
+		return "", fmt.Errorf("%w: %s", ErrCacheNotGitRepo, repopath)
 	}
 	if err := o.gitVersion(ctx); err != nil {
-		return err
+		return "", err
 	}
 	alreadySwitched := false
-	if alreadyCloned {
-		if err := o.gitPull(ctx, repopath, ref); err != nil {
-			return err
-		}
-		alreadySwitched = true
-	} else {
-		if err := o.gitClone(ctx, repopath, repo); err != nil {
-			return err
+	if needUpdate {
+		if alreadyCloned {
+			if !o.Opts.NoNetwork {
+				if err := o.gitPull(ctx, repopath, ref); err != nil {
+					return "", err
+				}
+				alreadySwitched = true
+			}
+		} else {
+			if o.Opts.NoNetwork {
+				return "", fmt.Errorf("Git repo %s not present: %w", repopath, ErrNetworkRequired)
+			}
+			if err := o.gitClone(ctx, repopath, repo); err != nil {
+				return "", err
+			}
 		}
 	}
 	if o.gitIsBranch(ctx, repopath, ref) {
 		if !alreadySwitched {
 			if err := o.gitSwitchBranch(ctx, repopath, ref); err != nil {
-				return err
+				return "", err
 			}
 		}
 	}
 	// is tag or commit
 	if err := o.gitSwitchDetach(ctx, repopath, ref); err != nil {
-		return err
+		return "", err
 	}
-	return nil
+	return retrepopath, nil
 }
 
 const (

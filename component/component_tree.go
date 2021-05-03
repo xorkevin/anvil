@@ -43,13 +43,13 @@ func (c *configFileCache) Parse(ctx context.Context, path RepoPath) (*ConfigFile
 	if path.Repo == "" {
 		fsys = c.localfs
 	} else {
-		if err := c.fetcher.Fetch(ctx, path.Kind, path.Repo, path.Ref); err != nil {
+		repopath, err := c.fetcher.Fetch(ctx, path.Kind, path.Repo, path.Ref)
+		if err != nil {
 			return nil, err
 		}
-		var err error
-		fsys, err = fs.Sub(c.remotefs, path.Repo)
+		fsys, err = fs.Sub(c.remotefs, repopath)
 		if err != nil {
-			return nil, fmt.Errorf("Failed to open dir %s: %w", path.Repo, err)
+			return nil, fmt.Errorf("Failed to open dir %s: %w", repopath, err)
 		}
 	}
 	f, err := ParseConfigFile(fsys, path.Path)
@@ -148,6 +148,7 @@ func GenerateComponents(ctx context.Context, outputfs WriteFS, localfs, remotefs
 type (
 	// Opts holds generation opts
 	Opts struct {
+		NoNetwork       bool
 		GitPartialClone bool
 	}
 )
