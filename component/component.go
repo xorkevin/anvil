@@ -104,7 +104,7 @@ type (
 
 	// Subcomponent is a parsed sub component
 	Subcomponent struct {
-		Path       RepoPath
+		Src        RepoPath
 		Vars       map[string]interface{}
 		Templates  map[string]TemplateData
 		Components map[string]Patch
@@ -239,7 +239,7 @@ func mergeSubcomponents(components map[string]componentData, patch map[string]Pa
 	merged := map[string]Subcomponent{}
 	for k, v := range components {
 		merged[k] = Subcomponent{
-			Path: RepoPath{
+			Src: RepoPath{
 				Kind: v.Kind,
 				Repo: v.Repo,
 				Ref:  v.Ref,

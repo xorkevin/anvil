@@ -79,14 +79,14 @@ func parseComponentTreeRec(ctx context.Context, path RepoPath, patch *Patch, par
 
 	components := make([]Component, 0, len(deps)+1)
 	for _, i := range deps {
-		subpath := i.Path
-		switch i.Path.Kind {
+		subpath := i.Src
+		switch i.Src.Kind {
 		case componentKindLocal:
 			subpath.Repo = path.Repo
 		case componentKindGit:
-			subpath.Repo = i.Path.Repo
+			subpath.Repo = i.Src.Repo
 		default:
-			return nil, fmt.Errorf("%w: %s", ErrInvalidComponentKind, i.Path.Kind)
+			return nil, fmt.Errorf("%w: %s", ErrInvalidComponentKind, i.Src.Kind)
 		}
 		children, err := parseComponentTreeRec(ctx, subpath, i.Patch(), parents, cache)
 		if err != nil {

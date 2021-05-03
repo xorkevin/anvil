@@ -89,7 +89,7 @@ file1content: {{ .Vars.field1.field1sub1 }}
 			},
 			Deps: []Subcomponent{
 				{
-					Path: RepoPath{
+					Src: RepoPath{
 						Kind: "local",
 						Path: "subcomp/config.yaml",
 					},
