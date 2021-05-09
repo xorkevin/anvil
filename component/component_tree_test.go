@@ -15,29 +15,21 @@ func TestComponentTree(t *testing.T) {
 	t.Parallel()
 
 	tabReplacer := strings.NewReplacer("\t", "  ")
+	now := time.Now()
+	var filemode fs.FileMode = 0644
 
 	for _, tc := range []struct {
-		Name             string
-		ConfigPath       string
-		ConfigData       string
-		ConfigTplPath    string
-		ConfigTplData    string
-		TplPath          string
-		TplData          string
-		SubConfigPath    string
-		SubConfigData    string
-		SubConfigTplPath string
-		SubConfigTplData string
-		SubTplPath       string
-		SubTplData       string
-		PatchPath        string
-		PatchData        string
-		Files            map[string]string
+		Name       string
+		LocalFS    fs.FS
+		ConfigPath string
+		PatchPath  string
+		Files      map[string]string
 	}{
 		{
-			Name:       "full",
-			ConfigPath: "comp/config.yaml",
-			ConfigData: `
+			Name: "full",
+			LocalFS: fstest.MapFS{
+				"comp/config.yaml": &fstest.MapFile{
+					Data: []byte(tabReplacer.Replace(`
 version: xorkevin.dev/anvil/v1alpha1
 
 vars:
@@ -46,9 +38,12 @@ vars:
 		field1sub2: out.yaml
 
 configtpl: configtpl.yaml
-`,
-			ConfigTplPath: "comp/configtpl.yaml",
-			ConfigTplData: `
+`)),
+					Mode:    filemode,
+					ModTime: now,
+				},
+				"comp/configtpl.yaml": &fstest.MapFile{
+					Data: []byte(tabReplacer.Replace(`
 templates:
 	file1:
 		path: file1.yaml
@@ -63,12 +58,21 @@ components:
 				field1sub1: some val
 				field1sub2: {{ .Vars.field1.field1sub1 }}
 `,
-			TplPath: "comp/file1.yaml",
-			TplData: `
+					)),
+					Mode:    filemode,
+					ModTime: now,
+				},
+				"comp/file1.yaml": &fstest.MapFile{
+					Data: []byte(tabReplacer.Replace(
+						`
 file1content: {{ .Vars.field1.field1sub1 }}
 `,
-			SubConfigPath: "subcomp/config.yaml",
-			SubConfigData: `
+					)),
+					Mode:    filemode,
+					ModTime: now,
+				},
+				"subcomp/config.yaml": &fstest.MapFile{
+					Data: []byte(tabReplacer.Replace(`
 version: xorkevin.dev/anvil/v1alpha1
 
 vars:
@@ -78,18 +82,32 @@ vars:
 
 configtpl: configtpl.yaml
 `,
-			SubConfigTplPath: "subcomp/configtpl.yaml",
-			SubConfigTplData: `
+					)),
+					Mode:    filemode,
+					ModTime: now,
+				},
+				"subcomp/configtpl.yaml": &fstest.MapFile{
+					Data: []byte(tabReplacer.Replace(`
 templates:
 	file1:
 		path: file1.yaml
 		output: subout.yaml
 `,
-			SubTplPath: "subcomp/file1.yaml",
-			SubTplData: `
+					)),
+					Mode:    filemode,
+					ModTime: now,
+				},
+				"subcomp/file1.yaml": &fstest.MapFile{
+					Data: []byte(tabReplacer.Replace(`
 file1field1: {{ .Vars.field1.field1sub1 }}
 file1field2: {{ .Vars.field1.field1sub2 }}
 `,
+					)),
+					Mode:    filemode,
+					ModTime: now,
+				},
+			},
+			ConfigPath: "comp/config.yaml",
 			Files: map[string]string{
 				"out.yaml": `
 file1content: hello, world
@@ -105,43 +123,8 @@ file1field2: hello, world
 			t.Parallel()
 			assert := require.New(t)
 
-			now := time.Now()
-			var filemode fs.FileMode = 0644
-			fsys := fstest.MapFS{
-				tc.ConfigPath: &fstest.MapFile{
-					Data:    []byte(tabReplacer.Replace(tc.ConfigData)),
-					Mode:    filemode,
-					ModTime: now,
-				},
-				tc.ConfigTplPath: &fstest.MapFile{
-					Data:    []byte(tabReplacer.Replace(tc.ConfigTplData)),
-					Mode:    filemode,
-					ModTime: now,
-				},
-				tc.TplPath: &fstest.MapFile{
-					Data:    []byte(tabReplacer.Replace(tc.TplData)),
-					Mode:    filemode,
-					ModTime: now,
-				},
-				tc.SubConfigPath: &fstest.MapFile{
-					Data:    []byte(tabReplacer.Replace(tc.SubConfigData)),
-					Mode:    filemode,
-					ModTime: now,
-				},
-				tc.SubConfigTplPath: &fstest.MapFile{
-					Data:    []byte(tabReplacer.Replace(tc.SubConfigTplData)),
-					Mode:    filemode,
-					ModTime: now,
-				},
-				tc.SubTplPath: &fstest.MapFile{
-					Data:    []byte(tabReplacer.Replace(tc.SubTplData)),
-					Mode:    filemode,
-					ModTime: now,
-				},
-			}
-
 			writefs := NewWriteFSMock()
-			assert.NoError(GenerateComponents(context.Background(), writefs, fsys, nil, nil, tc.ConfigPath, tc.PatchPath))
+			assert.NoError(GenerateComponents(context.Background(), writefs, tc.LocalFS, nil, tc.ConfigPath, tc.PatchPath))
 			assert.Equal(tc.Files, writefs.Files)
 		})
 	}
