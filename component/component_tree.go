@@ -35,40 +35,37 @@ func newConfigFileCache(localfs, remotefs fs.FS, fetcher Fetcher) *configFileCac
 	}
 }
 
-func (c *configFileCache) Parse(ctx context.Context, path RepoPath) (*ConfigFile, error) {
-	if f, ok := c.cache[path]; ok {
+func (c *configFileCache) Parse(ctx context.Context, src RepoPath) (*ConfigFile, error) {
+	if f, ok := c.cache[src]; ok {
 		return f, nil
 	}
-	var fsys fs.FS
-	if path.Repo == "" {
-		fsys = c.localfs
+	var repofs fs.FS
+	if src.Repo == "" {
+		repofs = c.localfs
 	} else {
-		repopath, err := c.fetcher.Fetch(ctx, path.Kind, path.Repo, path.Ref)
+		var err error
+		repofs, err = c.fetcher.Fetch(ctx, src.Kind, src.Repo, src.Ref)
 		if err != nil {
 			return nil, err
 		}
-		fsys, err = fs.Sub(c.remotefs, repopath)
-		if err != nil {
-			return nil, fmt.Errorf("Failed to open dir %s: %w", repopath, err)
-		}
 	}
-	f, err := ParseConfigFile(fsys, path.Path)
+	f, err := ParseConfigFile(repofs, src.Path)
 	if err != nil {
 		return nil, err
 	}
-	c.cache[path] = f
+	c.cache[src] = f
 	return f, nil
 }
 
-func parseComponentTreeRec(ctx context.Context, path RepoPath, patch *Patch, parents []RepoPath, cache *configFileCache) ([]Component, error) {
+func parseComponentTreeRec(ctx context.Context, src RepoPath, patch *Patch, parents []RepoPath, cache *configFileCache) ([]Component, error) {
 	for _, i := range parents {
-		if path == i {
-			return nil, fmt.Errorf("%w: %s -> %s", ErrImportCycle, parents[len(parents)-1], path)
+		if src == i {
+			return nil, fmt.Errorf("%w: %s -> %s", ErrImportCycle, parents[len(parents)-1], src)
 		}
 	}
-	parents = append(parents, path)
+	parents = append(parents, src)
 
-	config, err := cache.Parse(ctx, path)
+	config, err := cache.Parse(ctx, src)
 	if err != nil {
 		return nil, err
 	}
@@ -79,16 +76,16 @@ func parseComponentTreeRec(ctx context.Context, path RepoPath, patch *Patch, par
 
 	components := make([]Component, 0, len(deps)+1)
 	for _, i := range deps {
-		subpath := i.Src
+		subsrc := i.Src
 		switch i.Src.Kind {
 		case componentKindLocal:
-			subpath.Repo = path.Repo
+			subsrc.Repo = src.Repo
 		case componentKindGit:
-			subpath.Repo = i.Src.Repo
+			subsrc.Repo = i.Src.Repo
 		default:
 			return nil, fmt.Errorf("%w: %s", ErrInvalidComponentKind, i.Src.Kind)
 		}
-		children, err := parseComponentTreeRec(ctx, subpath, i.Patch(), parents, cache)
+		children, err := parseComponentTreeRec(ctx, subsrc, i.Patch(), parents, cache)
 		if err != nil {
 			return nil, err
 		}
