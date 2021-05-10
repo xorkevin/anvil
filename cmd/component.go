@@ -50,7 +50,7 @@ func init() {
 	componentCmd.PersistentFlags().StringVarP(&componentLocal, "input", "i", ".", "component definition directory")
 	componentCmd.PersistentFlags().StringVarP(&componentRemote, "remote-cache", "r", ".anvil_remote_cache", "remote component cache directory")
 	componentCmd.PersistentFlags().StringVarP(&componentConfig, "component", "c", "component.yaml", "root component file")
-	componentCmd.PersistentFlags().StringVarP(&componentPatch, "patch", "p", "patch.yaml", "component patch file")
+	componentCmd.PersistentFlags().StringVarP(&componentPatch, "patch", "p", "", "component patch file")
 	componentCmd.PersistentFlags().BoolVar(&componentNoNetwork, "no-network", false, "use cache only for remote components")
 	componentCmd.PersistentFlags().BoolVar(&componentGitPartialClone, "git-partial-clone", false, "use git partial clone for remote git components")
 }
