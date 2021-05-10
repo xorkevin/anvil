@@ -18,7 +18,7 @@ type (
 func NewFetcherMock(cachefs fs.FS) *FetcherMock {
 	return &FetcherMock{
 		CacheFS:      cachefs,
-		PathReplacer: strings.NewReplacer("/", "_"),
+		PathReplacer: strings.NewReplacer("/", "__"),
 	}
 }
 
@@ -33,11 +33,14 @@ func (f *FetcherMock) Fetch(ctx context.Context, kind, repo, ref string) (fs.FS,
 
 func (f *FetcherMock) repoPathGit(repo, ref string) (string, error) {
 	repodir := f.PathReplacer.Replace(repo)
-	if fs.ValidPath(repodir) {
+	if !fs.ValidPath(repodir) {
 		return "", fmt.Errorf("Invalid repo %s: %w", repo, fs.ErrInvalid)
 	}
+	if ref == "" {
+		ref = gitDefaultBranch
+	}
 	refdir := f.PathReplacer.Replace(ref)
-	if fs.ValidPath(refdir) {
+	if !fs.ValidPath(refdir) {
 		return "", fmt.Errorf("Invalid ref %s: %w", ref, fs.ErrInvalid)
 	}
 	return filepath.Join("git", repodir, refdir), nil

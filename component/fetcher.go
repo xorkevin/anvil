@@ -57,7 +57,7 @@ func NewOSFetcher(base string, opts Opts) *OSFetcher {
 	return &OSFetcher{
 		Base:         base,
 		CacheFS:      os.DirFS(base),
-		PathReplacer: strings.NewReplacer("/", "_"),
+		PathReplacer: strings.NewReplacer("/", "__"),
 		Opts:         opts,
 		cache:        map[repoCacheKey]repoCacheState{},
 	}
@@ -95,7 +95,7 @@ func (o *OSFetcher) Fetch(ctx context.Context, kind, repo, ref string) (fs.FS, e
 
 func (o *OSFetcher) repoPathGit(repo string) (string, error) {
 	repodir := o.PathReplacer.Replace(repo)
-	if fs.ValidPath(repodir) {
+	if !fs.ValidPath(repodir) {
 		return "", fmt.Errorf("Invalid repo %s: %w", repo, fs.ErrInvalid)
 	}
 	return filepath.Join("git", repodir), nil
