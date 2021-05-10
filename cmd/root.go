@@ -17,8 +17,8 @@ var cfgFile string
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:     "anvil",
-	Short:   "A compositional kubernetes manifest generator",
-	Long:    `A compositional kubernetes manifest generator`,
+	Short:   "A compositional template generator",
+	Long:    `A compositional template generator`,
 	Version: versionString,
 	// Uncomment the following line if your bare application
 	// has an action associated with it:
