@@ -139,7 +139,7 @@ func (c *templateCache) Parse(path string) (*template.Template, error) {
 	if t, ok := c.cache[path]; ok {
 		return t, nil
 	}
-	t, err := template.New(path).ParseFS(c.dir, path)
+	t, err := template.New(filepath.Base(path)).ParseFS(c.dir, path)
 	if err != nil {
 		return nil, fmt.Errorf("Invalid template %s: %w", path, err)
 	}
