@@ -3,10 +3,7 @@ package component
 import (
 	"bufio"
 	"bytes"
-	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"log"
 	"os"
@@ -14,13 +11,7 @@ import (
 	"sort"
 	"text/template"
 
-	"gopkg.in/yaml.v3"
-)
-
-const (
-	fileExtJson = ".json"
-	fileExtYaml = ".yaml"
-	fileExtYml  = ".yml"
+	"xorkevin.dev/anvil/configfile"
 )
 
 const (
@@ -31,11 +22,6 @@ const (
 const (
 	generatedFileMode = 0644
 	generatedFileFlag = os.O_RDWR | os.O_CREATE
-)
-
-var (
-	// ErrInvalidExt is returned when attempting to parse a file with an invalid extension
-	ErrInvalidExt = errors.New("Invalid config extension")
 )
 
 type (
@@ -147,35 +133,6 @@ func (c *templateCache) Parse(path string) (*template.Template, error) {
 	return t, nil
 }
 
-func decodeJSONorYAML(r io.Reader, ext string, target interface{}) error {
-	switch ext {
-	case fileExtJson:
-		if err := json.NewDecoder(r).Decode(target); err != nil {
-			return fmt.Errorf("Invalid JSON: %w", err)
-		}
-	case fileExtYaml, fileExtYml:
-		if err := yaml.NewDecoder(r).Decode(target); err != nil {
-			return fmt.Errorf("Invalid YAML: %w", err)
-		}
-	default:
-		return fmt.Errorf("%w: %s", ErrInvalidExt, ext)
-	}
-	return nil
-}
-
-func decodeJSONorYAMLFile(fsys fs.FS, path string, target interface{}) error {
-	file, err := fsys.Open(path)
-	if err != nil {
-		return fmt.Errorf("Invalid file: %w", err)
-	}
-	defer func() {
-		if err := file.Close(); err != nil {
-			log.Printf("Failed to close open file %s: %v", path, err)
-		}
-	}()
-	return decodeJSONorYAML(file, filepath.Ext(path), target)
-}
-
 // ParseConfigFile parses a config file in a filesystem
 func ParseConfigFile(fsys fs.FS, path string) (*ConfigFile, error) {
 	dirpath := filepath.Dir(path)
@@ -185,7 +142,7 @@ func ParseConfigFile(fsys fs.FS, path string) (*ConfigFile, error) {
 	}
 
 	var config configData
-	if err := decodeJSONorYAMLFile(fsys, path, &config); err != nil {
+	if err := configfile.DecodeJSONorYAMLFile(fsys, path, &config); err != nil {
 		return nil, fmt.Errorf("Invalid config %s: %w", path, err)
 	}
 
@@ -211,7 +168,7 @@ func ParseConfigFile(fsys fs.FS, path string) (*ConfigFile, error) {
 // ParsePatchFile parses a patch file in a filesystem
 func ParsePatchFile(fsys fs.FS, path string) (*Patch, error) {
 	var patch Patch
-	if err := decodeJSONorYAMLFile(fsys, path, &patch); err != nil {
+	if err := configfile.DecodeJSONorYAMLFile(fsys, path, &patch); err != nil {
 		return nil, fmt.Errorf("Invalid patch file %s: %w", path, err)
 	}
 	return &patch, nil
@@ -274,7 +231,7 @@ func (c *ConfigFile) Init(patch *Patch) (*Component, []Subcomponent, error) {
 		if err := c.configTpl.Execute(b, data); err != nil {
 			return nil, nil, fmt.Errorf("Failed to generate config: %w", err)
 		}
-		if err := decodeJSONorYAML(b, filepath.Ext(c.path), &gencfg); err != nil {
+		if err := configfile.DecodeJSONorYAML(b, filepath.Ext(c.path), &gencfg); err != nil {
 			return nil, nil, fmt.Errorf("Invalid generated config %s: %w", c.path, err)
 		}
 	}

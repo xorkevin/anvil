@@ -3,6 +3,7 @@ package vault
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -12,18 +13,34 @@ import (
 	"strings"
 
 	vaultapi "github.com/hashicorp/vault/api"
+	"xorkevin.dev/anvil/configfile"
+)
+
+const (
+	roleKindKube = "kube"
+)
+
+var (
+	// ErrInvalidRoleKind is returned when attempting to parse a role with an invalid kind
+	ErrInvalidRoleKind = errors.New("Invalid role kind")
 )
 
 type (
+	// VaultClient interacts with vault
 	VaultClient interface {
 		PutPolicy(name, rules string) error
+		PutRole(mount, name string, body map[string]interface{}) error
 	}
 
+	// HTTPVaultClient interacts with vault via its http api
 	HTTPVaultClient struct {
-		client *vaultapi.Client
+		client  *vaultapi.Client
+		sys     *vaultapi.Sys
+		logical *vaultapi.Logical
 	}
 )
 
+// NewHTTPVaultClient creates a new HTTPVaultClient
 func NewHTTPVaultClient() (*HTTPVaultClient, error) {
 	config := vaultapi.DefaultConfig()
 	if err := config.Error; err != nil {
@@ -38,8 +55,21 @@ func NewHTTPVaultClient() (*HTTPVaultClient, error) {
 	}, nil
 }
 
+// PutPolicy uploads a policy to vault
 func (v *HTTPVaultClient) PutPolicy(name, rules string) error {
-	return v.client.Sys().PutPolicy(name, rules)
+	if v.sys == nil {
+		v.sys = v.client.Sys()
+	}
+	return v.sys.PutPolicy(name, rules)
+}
+
+// PutRole uploads a role to vault
+func (v *HTTPVaultClient) PutRole(mount, name string, body map[string]interface{}) error {
+	if v.logical == nil {
+		v.logical = v.client.Logical()
+	}
+	_, err := v.logical.Write(fmt.Sprintf("auth/%s/role/%s", mount, name), body)
+	return err
 }
 
 // AddPolicyDir uploads policies from a directory to vault
@@ -88,6 +118,82 @@ func AddPolicies(ctx context.Context, path string) error {
 	}
 	dir := os.DirFS(path)
 	if err := AddPolicyDir(ctx, client, dir); err != nil {
+		return err
+	}
+	return nil
+}
+
+type (
+	// roleData is the shape of a role
+	roleData struct {
+		Kind      string   `json:"kind"`
+		KubeMount string   `json:"kubemount"`
+		Role      string   `json:"role"`
+		SA        string   `json:"service_account,omitempty"`
+		NS        string   `json:"namespace,omitempty"`
+		Policies  []string `json:"policies"`
+		TTL       string   `json:"ttl"`
+		MaxTTL    string   `json:"maxttl"`
+	}
+
+	// roleConfigData is the shape of a role config
+	roleConfigData struct {
+		Roles []roleData `json:"roles"`
+	}
+)
+
+// AddRolesDir uploads roles from a directory to vault
+func AddRolesDir(ctx context.Context, client VaultClient, dir fs.FS) error {
+	entries, err := fs.ReadDir(dir, ".")
+	if err != nil {
+		return fmt.Errorf("Failed to read dir: %w", err)
+	}
+
+	var roles []roleData
+	for _, i := range entries {
+		if i.IsDir() {
+			continue
+		}
+		if err := func() error {
+			name := i.Name()
+			var roleConfig roleConfigData
+			if err := configfile.DecodeJSONorYAMLFile(dir, name, &roleConfig); err != nil {
+				return fmt.Errorf("Invalid vault roles file %s: %w", name, err)
+			}
+			roles = append(roles, roleConfig.Roles...)
+			return nil
+		}(); err != nil {
+			return err
+		}
+	}
+
+	for _, i := range roles {
+		switch i.Kind {
+		case roleKindKube:
+			if err := client.PutRole(i.KubeMount, i.Role, map[string]interface{}{
+				"bound_service_account_names":      i.SA,
+				"bound_service_account_namespaces": i.NS,
+				"policies":                         i.Policies,
+				"ttl":                              i.TTL,
+				"max_ttl":                          i.MaxTTL,
+			}); err != nil {
+				return fmt.Errorf("Failed to upload role %s to vault: %w", i.Role, err)
+			}
+		default:
+			return fmt.Errorf("%w: %s", ErrInvalidRoleKind, i.Kind)
+		}
+	}
+	return nil
+}
+
+// AddRoles creates a vault client and uploads roles from a directory
+func AddRoles(ctx context.Context, path string) error {
+	client, err := NewHTTPVaultClient()
+	if err != nil {
+		return err
+	}
+	dir := os.DirFS(path)
+	if err := AddRolesDir(ctx, client, dir); err != nil {
 		return err
 	}
 	return nil
