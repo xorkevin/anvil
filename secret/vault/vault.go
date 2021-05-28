@@ -72,8 +72,16 @@ func (v *HTTPVaultClient) PutRole(mount, name string, body map[string]interface{
 	return err
 }
 
+type (
+	// Opts are vault client opts
+	Opts struct {
+		Verbose bool
+		DryRun  bool
+	}
+)
+
 // AddPolicyDir uploads policies from a directory to vault
-func AddPolicyDir(ctx context.Context, client VaultClient, dir fs.FS) error {
+func AddPolicyDir(ctx context.Context, client VaultClient, dir fs.FS, opts Opts) error {
 	entries, err := fs.ReadDir(dir, ".")
 	if err != nil {
 		return fmt.Errorf("Failed to read dir: %w", err)
@@ -99,8 +107,13 @@ func AddPolicyDir(ctx context.Context, client VaultClient, dir fs.FS) error {
 			}
 			base := filepath.Base(name)
 			policyName := strings.TrimSuffix(base, filepath.Ext(base))
-			if err := client.PutPolicy(policyName, b.String()); err != nil {
-				return fmt.Errorf("Failed to upload policy %s to vault: %w", policyName, err)
+			if opts.Verbose {
+				log.Printf("Uploading policy %s", policyName)
+			}
+			if !opts.DryRun {
+				if err := client.PutPolicy(policyName, b.String()); err != nil {
+					return fmt.Errorf("Failed to upload policy %s to vault: %w", policyName, err)
+				}
 			}
 			return nil
 		}(); err != nil {
@@ -111,13 +124,13 @@ func AddPolicyDir(ctx context.Context, client VaultClient, dir fs.FS) error {
 }
 
 // AddPolicies creates a vault client and uploads policies from a directory
-func AddPolicies(ctx context.Context, path string) error {
+func AddPolicies(ctx context.Context, path string, opts Opts) error {
 	client, err := NewHTTPVaultClient()
 	if err != nil {
 		return err
 	}
 	dir := os.DirFS(path)
-	if err := AddPolicyDir(ctx, client, dir); err != nil {
+	if err := AddPolicyDir(ctx, client, dir, opts); err != nil {
 		return err
 	}
 	return nil
@@ -126,14 +139,14 @@ func AddPolicies(ctx context.Context, path string) error {
 type (
 	// roleData is the shape of a role
 	roleData struct {
-		Kind      string   `json:"kind"`
-		KubeMount string   `json:"kubemount"`
-		Role      string   `json:"role"`
-		SA        string   `json:"service_account,omitempty"`
-		NS        string   `json:"namespace,omitempty"`
-		Policies  []string `json:"policies"`
-		TTL       string   `json:"ttl"`
-		MaxTTL    string   `json:"maxttl"`
+		Kind      string   `json:"kind" yaml:"kind"`
+		KubeMount string   `json:"kubemount" yaml:"kubemount"`
+		Role      string   `json:"role" yaml:"role"`
+		SA        string   `json:"service_account,omitempty" yaml:"service_account,omitempty"`
+		NS        string   `json:"namespace,omitempty" yaml:"namespace,omitempty"`
+		Policies  []string `json:"policies" yaml:"policies"`
+		TTL       string   `json:"ttl" yaml:"ttl"`
+		MaxTTL    string   `json:"maxttl" yaml:"maxttl"`
 	}
 
 	// roleConfigData is the shape of a role config
@@ -143,7 +156,7 @@ type (
 )
 
 // AddRolesDir uploads roles from a directory to vault
-func AddRolesDir(ctx context.Context, client VaultClient, dir fs.FS) error {
+func AddRolesDir(ctx context.Context, client VaultClient, dir fs.FS, opts Opts) error {
 	entries, err := fs.ReadDir(dir, ".")
 	if err != nil {
 		return fmt.Errorf("Failed to read dir: %w", err)
@@ -170,14 +183,20 @@ func AddRolesDir(ctx context.Context, client VaultClient, dir fs.FS) error {
 	for _, i := range roles {
 		switch i.Kind {
 		case roleKindKube:
-			if err := client.PutRole(i.KubeMount, i.Role, map[string]interface{}{
+			body := map[string]interface{}{
 				"bound_service_account_names":      i.SA,
 				"bound_service_account_namespaces": i.NS,
 				"policies":                         i.Policies,
 				"ttl":                              i.TTL,
 				"max_ttl":                          i.MaxTTL,
-			}); err != nil {
-				return fmt.Errorf("Failed to upload role %s to vault: %w", i.Role, err)
+			}
+			if opts.Verbose {
+				log.Printf("Uploading role %s: %v", i.Role, body)
+			}
+			if !opts.DryRun {
+				if err := client.PutRole(i.KubeMount, i.Role, body); err != nil {
+					return fmt.Errorf("Failed to upload role %s to vault: %w", i.Role, err)
+				}
 			}
 		default:
 			return fmt.Errorf("%w: %s", ErrInvalidRoleKind, i.Kind)
@@ -187,13 +206,13 @@ func AddRolesDir(ctx context.Context, client VaultClient, dir fs.FS) error {
 }
 
 // AddRoles creates a vault client and uploads roles from a directory
-func AddRoles(ctx context.Context, path string) error {
+func AddRoles(ctx context.Context, path string, opts Opts) error {
 	client, err := NewHTTPVaultClient()
 	if err != nil {
 		return err
 	}
 	dir := os.DirFS(path)
-	if err := AddRolesDir(ctx, client, dir); err != nil {
+	if err := AddRolesDir(ctx, client, dir, opts); err != nil {
 		return err
 	}
 	return nil
