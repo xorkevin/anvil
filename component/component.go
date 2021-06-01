@@ -151,7 +151,7 @@ func ParseConfigFile(fsys fs.FS, path string) (*ConfigFile, error) {
 		var err error
 		cfgtpl, err = template.New(config.ConfigTpl).ParseFS(dir, config.ConfigTpl)
 		if err != nil {
-			return nil, fmt.Errorf("Invalid config template %s: %w", config.ConfigTpl, err)
+			return nil, fmt.Errorf("Invalid config template %s %s: %w", dirpath, config.ConfigTpl, err)
 		}
 	}
 
@@ -229,10 +229,10 @@ func (c *ConfigFile) Init(patch *Patch) (*Component, []Subcomponent, error) {
 			Vars: vars,
 		}
 		if err := c.configTpl.Execute(b, data); err != nil {
-			return nil, nil, fmt.Errorf("Failed to generate config: %w", err)
+			return nil, nil, fmt.Errorf("Failed to generate config %s %s: %w", c.Name, c.path, err)
 		}
 		if err := configfile.DecodeJSONorYAML(b, filepath.Ext(c.path), &gencfg); err != nil {
-			return nil, nil, fmt.Errorf("Invalid generated config %s: %w", c.path, err)
+			return nil, nil, fmt.Errorf("Invalid generated config %s %s: %w", c.Name, c.path, err)
 		}
 	}
 
@@ -283,7 +283,7 @@ func (c *Component) Generate(fsys WriteFS) error {
 		if err := func() error {
 			file, err := fsys.OpenFile(v.Output, generatedFileFlag, generatedFileMode)
 			if err != nil {
-				return fmt.Errorf("Invalid file %s: %w", v.Output, err)
+				return fmt.Errorf("Invalid output file %s: %w", v.Output, err)
 			}
 			defer func() {
 				if err := file.Close(); err != nil {
@@ -292,7 +292,7 @@ func (c *Component) Generate(fsys WriteFS) error {
 			}()
 			b := bufio.NewWriter(file)
 			if err := v.Tpl.Execute(b, data); err != nil {
-				return fmt.Errorf("Failed to generate template output: %w", err)
+				return fmt.Errorf("Failed to generate template output %s: %w", v.Output, err)
 			}
 			if err := b.Flush(); err != nil {
 				return fmt.Errorf("Failed to write to file %s: %w", v.Output, err)

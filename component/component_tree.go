@@ -65,11 +65,11 @@ func parseComponentTreeRec(ctx context.Context, src RepoPath, patch *Patch, pare
 
 	config, err := cache.Parse(ctx, src)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Error parsing %s: %w", src, err)
 	}
 	component, deps, err := config.Init(patch)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Error initing %s: %w", src, err)
 	}
 
 	components := make([]Component, 0, len(deps)+1)
@@ -81,11 +81,11 @@ func parseComponentTreeRec(ctx context.Context, src RepoPath, patch *Patch, pare
 		case componentKindGit:
 			subsrc.Repo = i.Src.Repo
 		default:
-			return nil, fmt.Errorf("%w: %s", ErrInvalidComponentKind, i.Src.Kind)
+			return nil, fmt.Errorf("%w %s: %s", ErrInvalidComponentKind, src, i.Src.Kind)
 		}
 		children, err := parseComponentTreeRec(ctx, subsrc, i.Patch(), parents, cache)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("Error in subcomponent of %s: %w", src, err)
 		}
 		components = append(components, children...)
 	}
