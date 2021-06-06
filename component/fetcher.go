@@ -148,6 +148,9 @@ func (o *OSFetcher) FetchGit(ctx context.Context, repo, ref string, needUpdate b
 			if err := o.gitSwitchBranch(ctx, repopath, ref); err != nil {
 				return nil, err
 			}
+			if err := o.gitMerge(ctx, repopath, ref); err != nil {
+				return nil, err
+			}
 		}
 	} else {
 		// is tag or commit
@@ -234,6 +237,15 @@ func (o *OSFetcher) gitPull(ctx context.Context, repopath, branch string) error 
 	cmd.Dir = repopath
 	if err := o.runCmd(cmd); err != nil {
 		return fmt.Errorf("Failed to git pull %s in %s: %w", branch, repopath, err)
+	}
+	return nil
+}
+
+func (o *OSFetcher) gitMerge(ctx context.Context, repopath, branch string) error {
+	cmd := exec.CommandContext(ctx, binGit, "merge", "--ff-only")
+	cmd.Dir = repopath
+	if err := o.runCmd(cmd); err != nil {
+		return fmt.Errorf("Failed to git merge for %s in %s: %w", branch, repopath, err)
 	}
 	return nil
 }
