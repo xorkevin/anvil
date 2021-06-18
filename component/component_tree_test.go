@@ -118,7 +118,7 @@ file1field2: {{ .Vars.field1.field1sub2 }}
 				},
 			},
 			CacheFS: fstest.MapFS{
-				"git/git@example.com:path__repo.git/master/comp/config.yaml": &fstest.MapFile{
+				"git/git%40example.com%3Apath%2Frepo.git/master/comp/config.yaml": &fstest.MapFile{
 					Data: []byte(tabReplacer.Replace(`
 version: xorkevin.dev/anvil/v1alpha1
 
@@ -132,7 +132,7 @@ configtpl: configtpl.yaml
 					Mode:    filemode,
 					ModTime: now,
 				},
-				"git/git@example.com:path__repo.git/master/comp/configtpl.yaml": &fstest.MapFile{
+				"git/git%40example.com%3Apath%2Frepo.git/master/comp/configtpl.yaml": &fstest.MapFile{
 					Data: []byte(tabReplacer.Replace(`
 templates:
 	file1:
@@ -142,7 +142,7 @@ templates:
 					Mode:    filemode,
 					ModTime: now,
 				},
-				"git/git@example.com:path__repo.git/master/comp/file1.yaml": &fstest.MapFile{
+				"git/git%40example.com%3Apath%2Frepo.git/master/comp/file1.yaml": &fstest.MapFile{
 					Data: []byte(tabReplacer.Replace(`
 file1text: {{ .Vars.field1.field1sub1 }}
 `)),

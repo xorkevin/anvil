@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -44,22 +45,20 @@ type (
 	}
 
 	OSFetcher struct {
-		Base         string
-		CacheFS      fs.FS
-		PathReplacer *strings.Replacer
-		Opts         Opts
-		cache        map[repoCacheKey]repoCacheState
-		hasGit       bool
+		Base    string
+		CacheFS fs.FS
+		Opts    Opts
+		cache   map[repoCacheKey]repoCacheState
+		hasGit  bool
 	}
 )
 
 func NewOSFetcher(base string, opts Opts) *OSFetcher {
 	return &OSFetcher{
-		Base:         base,
-		CacheFS:      os.DirFS(base),
-		PathReplacer: strings.NewReplacer("/", "__"),
-		Opts:         opts,
-		cache:        map[repoCacheKey]repoCacheState{},
+		Base:    base,
+		CacheFS: os.DirFS(base),
+		Opts:    opts,
+		cache:   map[repoCacheKey]repoCacheState{},
 	}
 }
 
@@ -94,7 +93,7 @@ func (o *OSFetcher) Fetch(ctx context.Context, kind, repo, ref string) (fs.FS, e
 }
 
 func (o *OSFetcher) repoPathGit(repo string) (string, error) {
-	repodir := o.PathReplacer.Replace(repo)
+	repodir := url.QueryEscape(repo)
 	if !fs.ValidPath(repodir) {
 		return "", fmt.Errorf("Invalid repo %s: %w", repo, fs.ErrInvalid)
 	}

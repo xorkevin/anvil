@@ -4,21 +4,19 @@ import (
 	"context"
 	"fmt"
 	"io/fs"
+	"net/url"
 	"path/filepath"
-	"strings"
 )
 
 type (
 	FetcherMock struct {
-		CacheFS      fs.FS
-		PathReplacer *strings.Replacer
+		CacheFS fs.FS
 	}
 )
 
 func NewFetcherMock(cachefs fs.FS) *FetcherMock {
 	return &FetcherMock{
-		CacheFS:      cachefs,
-		PathReplacer: strings.NewReplacer("/", "__"),
+		CacheFS: cachefs,
 	}
 }
 
@@ -32,14 +30,14 @@ func (f *FetcherMock) Fetch(ctx context.Context, kind, repo, ref string) (fs.FS,
 }
 
 func (f *FetcherMock) repoPathGit(repo, ref string) (string, error) {
-	repodir := f.PathReplacer.Replace(repo)
+	repodir := url.QueryEscape(repo)
 	if !fs.ValidPath(repodir) {
 		return "", fmt.Errorf("Invalid repo %s: %w", repo, fs.ErrInvalid)
 	}
 	if ref == "" {
 		ref = gitDefaultBranch
 	}
-	refdir := f.PathReplacer.Replace(ref)
+	refdir := url.QueryEscape(ref)
 	if !fs.ValidPath(refdir) {
 		return "", fmt.Errorf("Invalid ref %s: %w", ref, fs.ErrInvalid)
 	}
