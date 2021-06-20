@@ -153,8 +153,8 @@ func Test_jsonMergePatch(t *testing.T) {
 			Expected: `{"a":{"bb":{}}}`,
 		},
 	} {
+		tc := tc
 		t.Run(tc.Name, func(t *testing.T) {
-			tc := tc
 			t.Parallel()
 			assert := require.New(t)
 
@@ -313,8 +313,8 @@ func Test_jsonMergePatchObj(t *testing.T) {
 			Expected: `{"a":{"bb":{}}}`,
 		},
 	} {
+		tc := tc
 		t.Run(tc.Name, func(t *testing.T) {
-			tc := tc
 			t.Parallel()
 			assert := require.New(t)
 
