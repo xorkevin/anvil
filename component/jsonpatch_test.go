@@ -278,34 +278,14 @@ func Test_jsonMergePatchObj(t *testing.T) {
 			Expected: `{"a":[1]}`,
 		},
 		{
-			Target:   `["a","b"]`,
-			Patch:    `["c","d"]`,
-			Expected: `["c","d"]`,
-		},
-		{
-			Target:   `{"a":"b"}`,
-			Patch:    `["c"]`,
-			Expected: `["c"]`,
-		},
-		{
 			Target:   `{"a":"foo"}`,
 			Patch:    `null`,
 			Expected: `{"a":"foo"}`,
 		},
 		{
-			Target:   `{"a":"foo"}`,
-			Patch:    `"bar"`,
-			Expected: `"bar"`,
-		},
-		{
 			Target:   `{"e":null}`,
 			Patch:    `{"a":1}`,
 			Expected: `{"e":null,"a":1}`,
-		},
-		{
-			Target:   `[1,2]`,
-			Patch:    `{"a":"b","c":null}`,
-			Expected: `{"a":"b"}`,
 		},
 		{
 			Target:   `{}`,
