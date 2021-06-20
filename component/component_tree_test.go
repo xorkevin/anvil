@@ -166,6 +166,7 @@ file1text: some text
 		},
 	} {
 		t.Run(tc.Name, func(t *testing.T) {
+			tc := tc
 			t.Parallel()
 			assert := require.New(t)
 

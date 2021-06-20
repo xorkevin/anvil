@@ -121,6 +121,7 @@ file1content: hello, world
 			},
 		},
 	} {
+		tc := tc
 		t.Run(tc.Name, func(t *testing.T) {
 			t.Parallel()
 			assert := require.New(t)
@@ -217,6 +218,7 @@ components:
 		},
 	} {
 		t.Run(tc.Name, func(t *testing.T) {
+			tc := tc
 			t.Parallel()
 			assert := require.New(t)
 

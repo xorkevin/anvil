@@ -154,6 +154,7 @@ func Test_jsonMergePatch(t *testing.T) {
 		},
 	} {
 		t.Run(tc.Name, func(t *testing.T) {
+			tc := tc
 			t.Parallel()
 			assert := require.New(t)
 
@@ -313,6 +314,7 @@ func Test_jsonMergePatchObj(t *testing.T) {
 		},
 	} {
 		t.Run(tc.Name, func(t *testing.T) {
+			tc := tc
 			t.Parallel()
 			assert := require.New(t)
 
