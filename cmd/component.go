@@ -41,6 +41,7 @@ var componentCmd = &cobra.Command{
 			os.Exit(1)
 		}
 	},
+	DisableAutoGenTag: true,
 }
 
 func init() {

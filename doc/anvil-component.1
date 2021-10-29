@@ -1,0 +1,65 @@
+.nh
+.TH "anvil" "1" "Oct 2021" "" ""
+
+.SH NAME
+.PP
+anvil\-component \- Prints component configs
+
+
+.SH SYNOPSIS
+.PP
+\fBanvil component [flags]\fP
+
+
+.SH DESCRIPTION
+.PP
+Prints component configs
+
+
+.SH OPTIONS
+.PP
+\fB\-c\fP, \fB\-\-component\fP="component.yaml"
+	root component file
+
+.PP
+\fB\-\-git\-partial\-clone\fP[=false]
+	use git partial clone for remote git components
+
+.PP
+\fB\-h\fP, \fB\-\-help\fP[=false]
+	help for component
+
+.PP
+\fB\-i\fP, \fB\-\-input\fP="."
+	component definition directory
+
+.PP
+\fB\-\-no\-network\fP[=false]
+	use cache only for remote components
+
+.PP
+\fB\-o\fP, \fB\-\-output\fP="anvil\_out"
+	generated component output directory
+
+.PP
+\fB\-p\fP, \fB\-\-patch\fP=""
+	component patch file
+
+.PP
+\fB\-r\fP, \fB\-\-remote\-cache\fP=".anvil\_remote\_cache"
+	remote component cache directory
+
+
+.SH OPTIONS INHERITED FROM PARENT COMMANDS
+.PP
+\fB\-\-config\fP=""
+	config file (default is $XDG\_CONFIG\_HOME/.anvil.yaml)
+
+.PP
+\fB\-\-debug\fP[=false]
+	turn on debug output
+
+
+.SH SEE ALSO
+.PP
+\fBanvil(1)\fP

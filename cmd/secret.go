@@ -39,6 +39,7 @@ var secretCmd = &cobra.Command{
 			}
 		}
 	},
+	DisableAutoGenTag: true,
 }
 
 func init() {
