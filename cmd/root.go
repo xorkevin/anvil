@@ -12,7 +12,10 @@ const (
 	versionString = "v0.1"
 )
 
-var cfgFile string
+var (
+	cfgFile   string
+	debugMode bool
+)
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
@@ -41,6 +44,7 @@ func init() {
 	// Cobra supports persistent flags, which, if defined here,
 	// will be global for your application.
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $XDG_CONFIG_HOME/.anvil.yaml)")
+	rootCmd.PersistentFlags().BoolVar(&debugMode, "debug", false, "turn on debug output")
 
 	// Cobra also supports local flags, which will only run
 	// when this action is called directly.
@@ -57,8 +61,7 @@ func initConfig() {
 		viper.AddConfigPath(".")
 
 		// Search config in XDG_CONFIG_HOME directory with name ".anvil" (without extension).
-		cfgdir, err := os.UserConfigDir()
-		if err == nil {
+		if cfgdir, err := os.UserConfigDir(); err == nil {
 			viper.AddConfigPath(cfgdir)
 		}
 	}
@@ -66,7 +69,12 @@ func initConfig() {
 	viper.AutomaticEnv() // read in environment variables that match
 
 	// If a config file is found, read it in.
-	if err := viper.ReadInConfig(); err == nil {
-		fmt.Fprintln(os.Stderr, "Using config file:", viper.ConfigFileUsed())
+	configErr := viper.ReadInConfig()
+	if debugMode {
+		if configErr == nil {
+			fmt.Fprintln(os.Stderr, "Using config file:", viper.ConfigFileUsed())
+		} else {
+			fmt.Fprintln(os.Stderr, "Failed reading config file:", configErr)
+		}
 	}
 }
