@@ -1,7 +1,6 @@
 package component
 
 import (
-	"bufio"
 	"bytes"
 	"fmt"
 	"io/fs"
@@ -290,12 +289,8 @@ func (c *Component) Generate(fsys WriteFS) error {
 					log.Printf("Failed to close open file %s: %v", v.Output, err)
 				}
 			}()
-			b := bufio.NewWriter(file)
-			if err := v.Tpl.Execute(b, data); err != nil {
+			if err := v.Tpl.Execute(file, data); err != nil {
 				return fmt.Errorf("Failed to generate template output %s: %w", v.Output, err)
-			}
-			if err := b.Flush(); err != nil {
-				return fmt.Errorf("Failed to write to file %s: %w", v.Output, err)
 			}
 			return nil
 		}(); err != nil {
