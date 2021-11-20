@@ -19,15 +19,19 @@ const (
 )
 
 const (
-	generatedFileMode = 0644
 	generatedFileFlag = os.O_RDWR | os.O_CREATE
 )
 
 type (
+	templateTpl struct {
+		tpl  *template.Template
+		mode fs.FileMode
+	}
+
 	// templateCache caches parsed templates by path
 	templateCache struct {
 		dir   fs.FS
-		cache map[string]*template.Template
+		cache map[string]templateTpl
 	}
 
 	// configData is the shape of the component config
@@ -76,6 +80,7 @@ type (
 	// Template is a parsed template file
 	Template struct {
 		Tpl    *template.Template
+		Mode   fs.FileMode
 		Output string
 	}
 
@@ -116,20 +121,28 @@ func (r RepoPath) String() string {
 func newTemplateCache(dir fs.FS) *templateCache {
 	return &templateCache{
 		dir:   dir,
-		cache: map[string]*template.Template{},
+		cache: map[string]templateTpl{},
 	}
 }
 
-func (c *templateCache) Parse(path string) (*template.Template, error) {
+func (c *templateCache) Parse(path string) (*templateTpl, error) {
 	if t, ok := c.cache[path]; ok {
-		return t, nil
+		return &t, nil
 	}
-	t, err := template.New(filepath.Base(path)).ParseFS(c.dir, path)
+	info, err := fs.Stat(c.dir, path)
 	if err != nil {
 		return nil, fmt.Errorf("Invalid template %s: %w", path, err)
 	}
+	tpl, err := template.New(filepath.Base(path)).ParseFS(c.dir, path)
+	if err != nil {
+		return nil, fmt.Errorf("Invalid template %s: %w", path, err)
+	}
+	t := templateTpl{
+		tpl:  tpl,
+		mode: info.Mode().Perm(),
+	}
 	c.cache[path] = t
-	return t, nil
+	return &t, nil
 }
 
 // ParseConfigFile parses a config file in a filesystem
@@ -242,7 +255,8 @@ func (c *ConfigFile) Init(patch *Patch) (*Component, []Subcomponent, error) {
 			return nil, nil, err
 		}
 		tpls[k] = Template{
-			Tpl:    t,
+			Tpl:    t.tpl,
+			Mode:   t.mode,
 			Output: v.Output,
 		}
 	}
@@ -280,7 +294,7 @@ func (c *Component) Generate(fsys WriteFS) error {
 	}
 	for _, v := range c.Templates {
 		if err := func() error {
-			file, err := fsys.OpenFile(v.Output, generatedFileFlag, generatedFileMode)
+			file, err := fsys.OpenFile(v.Output, generatedFileFlag, v.Mode)
 			if err != nil {
 				return fmt.Errorf("Invalid output file %s: %w", v.Output, err)
 			}

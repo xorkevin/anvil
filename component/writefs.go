@@ -11,7 +11,7 @@ import (
 type (
 	// WriteFS is a file system that may be read from and written to
 	WriteFS interface {
-		OpenFile(name string, flag int, perm fs.FileMode) (io.WriteCloser, error)
+		OpenFile(name string, flag int, mode fs.FileMode) (io.WriteCloser, error)
 	}
 
 	// OSWriteFS implements WriteFS with the os file system
@@ -26,7 +26,7 @@ func NewOSWriteFS(base string) *OSWriteFS {
 	}
 }
 
-func (o *OSWriteFS) OpenFile(name string, flag int, perm fs.FileMode) (io.WriteCloser, error) {
+func (o *OSWriteFS) OpenFile(name string, flag int, mode fs.FileMode) (io.WriteCloser, error) {
 	if !fs.ValidPath(name) {
 		return nil, fs.ErrInvalid
 	}
@@ -34,7 +34,7 @@ func (o *OSWriteFS) OpenFile(name string, flag int, perm fs.FileMode) (io.WriteC
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return nil, fmt.Errorf("Failed to mkdir: %w", err)
 	}
-	f, err := os.OpenFile(path, flag, perm)
+	f, err := os.OpenFile(path, flag, mode)
 	if err != nil {
 		return nil, fmt.Errorf("Invalid file: %w", err)
 	}

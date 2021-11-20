@@ -24,7 +24,7 @@ func NewWriteFSMock() *WriteFSMock {
 	}
 }
 
-func (f *WriteFSMock) OpenFile(name string, flag int, perm fs.FileMode) (io.WriteCloser, error) {
+func (f *WriteFSMock) OpenFile(name string, flag int, mode fs.FileMode) (io.WriteCloser, error) {
 	return NewWriteFSFileMock(name, f), nil
 }
 
