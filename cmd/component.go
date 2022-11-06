@@ -2,56 +2,56 @@ package cmd
 
 import (
 	"context"
-	"fmt"
-	"os"
+	"log"
 
 	"github.com/spf13/cobra"
 	"xorkevin.dev/anvil/component"
 )
 
-var (
-	componentOutput          string
-	componentLocal           string
-	componentRemote          string
-	componentConfig          string
-	componentPatch           string
-	componentNoNetwork       bool
-	componentGitPartialClone bool
+type (
+	componentFlags struct {
+		output          string
+		local           string
+		remote          string
+		config          string
+		patch           string
+		noNetwork       bool
+		gitPartialClone bool
+	}
 )
 
-// componentCmd represents the component command
-var componentCmd = &cobra.Command{
-	Use:   "component",
-	Short: "Prints component configs",
-	Long:  `Prints component configs`,
-	Run: func(cmd *cobra.Command, args []string) {
-		if err := component.Generate(
-			context.Background(),
-			componentOutput,
-			componentLocal,
-			componentRemote,
-			componentConfig,
-			componentPatch,
-			component.Opts{
-				NoNetwork:       componentNoNetwork,
-				GitPartialClone: componentGitPartialClone,
-			},
-		); err != nil {
-			fmt.Println(err)
-			os.Exit(1)
-		}
-	},
-	DisableAutoGenTag: true,
+func (c *Cmd) getComponentCmd() *cobra.Command {
+	componentCmd := &cobra.Command{
+		Use:               "component",
+		Short:             "Prints component configs",
+		Long:              `Prints component configs`,
+		Run:               c.execComponentCmd,
+		DisableAutoGenTag: true,
+	}
+	componentCmd.PersistentFlags().StringVarP(&c.componentFlags.output, "output", "o", "anvil_out", "generated component output directory")
+	componentCmd.PersistentFlags().StringVarP(&c.componentFlags.local, "input", "i", ".", "component definition directory")
+	componentCmd.PersistentFlags().StringVarP(&c.componentFlags.remote, "remote-cache", "r", ".anvil_remote_cache", "remote component cache directory")
+	componentCmd.PersistentFlags().StringVarP(&c.componentFlags.config, "component", "c", "component.yaml", "root component file")
+	componentCmd.PersistentFlags().StringVarP(&c.componentFlags.patch, "patch", "p", "", "component patch file")
+	componentCmd.PersistentFlags().BoolVar(&c.componentFlags.noNetwork, "no-network", false, "use cache only for remote components")
+	componentCmd.PersistentFlags().BoolVar(&c.componentFlags.gitPartialClone, "git-partial-clone", false, "use git partial clone for remote git components")
+
+	return componentCmd
 }
 
-func init() {
-	rootCmd.AddCommand(componentCmd)
-
-	componentCmd.PersistentFlags().StringVarP(&componentOutput, "output", "o", "anvil_out", "generated component output directory")
-	componentCmd.PersistentFlags().StringVarP(&componentLocal, "input", "i", ".", "component definition directory")
-	componentCmd.PersistentFlags().StringVarP(&componentRemote, "remote-cache", "r", ".anvil_remote_cache", "remote component cache directory")
-	componentCmd.PersistentFlags().StringVarP(&componentConfig, "component", "c", "component.yaml", "root component file")
-	componentCmd.PersistentFlags().StringVarP(&componentPatch, "patch", "p", "", "component patch file")
-	componentCmd.PersistentFlags().BoolVar(&componentNoNetwork, "no-network", false, "use cache only for remote components")
-	componentCmd.PersistentFlags().BoolVar(&componentGitPartialClone, "git-partial-clone", false, "use git partial clone for remote git components")
+func (c *Cmd) execComponentCmd(cmd *cobra.Command, args []string) {
+	if err := component.Generate(
+		context.Background(),
+		c.componentFlags.output,
+		c.componentFlags.local,
+		c.componentFlags.remote,
+		c.componentFlags.config,
+		c.componentFlags.patch,
+		component.Opts{
+			NoNetwork:       c.componentFlags.noNetwork,
+			GitPartialClone: c.componentFlags.gitPartialClone,
+		},
+	); err != nil {
+		log.Fatalln(err)
+	}
 }

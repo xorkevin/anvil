@@ -2,51 +2,50 @@ package cmd
 
 import (
 	"context"
-	"fmt"
-	"os"
+	"log"
 
 	"github.com/spf13/cobra"
 	"xorkevin.dev/anvil/secret/vault"
 )
 
-var (
-	secretVaultPolicies string
-	secretVaultRoles    string
-	secretVerbose       bool
-	secretDryRun        bool
+type (
+	secretFlags struct {
+		vaultPolicies string
+		vaultRoles    string
+		verbose       bool
+		dryRun        bool
+	}
 )
 
-// secretCmd represents the secret command
-var secretCmd = &cobra.Command{
-	Use:   "secret",
-	Short: "Uploads secret configs",
-	Long:  `Uploads secret configs`,
-	Run: func(cmd *cobra.Command, args []string) {
-		opts := vault.Opts{
-			Verbose: secretVerbose,
-			DryRun:  secretDryRun,
-		}
-		if secretVaultPolicies != "" {
-			if err := vault.AddPolicies(context.Background(), secretVaultPolicies, opts); err != nil {
-				fmt.Println(err)
-				os.Exit(1)
-			}
-		}
-		if secretVaultRoles != "" {
-			if err := vault.AddRoles(context.Background(), secretVaultRoles, opts); err != nil {
-				fmt.Println(err)
-				os.Exit(1)
-			}
-		}
-	},
-	DisableAutoGenTag: true,
+func (c *Cmd) getSecretCmd() *cobra.Command {
+	secretCmd := &cobra.Command{
+		Use:               "secret",
+		Short:             "Uploads secret configs",
+		Long:              `Uploads secret configs`,
+		Run:               c.execSecretCmd,
+		DisableAutoGenTag: true,
+	}
+	secretCmd.PersistentFlags().StringVar(&c.secretFlags.vaultPolicies, "vault-policies", "", "vault secret policies")
+	secretCmd.PersistentFlags().StringVar(&c.secretFlags.vaultRoles, "vault-roles", "", "vault secret roles")
+	secretCmd.PersistentFlags().BoolVarP(&c.secretFlags.verbose, "verbose", "v", false, "verbose output")
+	secretCmd.PersistentFlags().BoolVarP(&c.secretFlags.dryRun, "dry-run", "n", false, "dry run")
+
+	return secretCmd
 }
 
-func init() {
-	rootCmd.AddCommand(secretCmd)
-
-	secretCmd.PersistentFlags().StringVar(&secretVaultPolicies, "vault-policies", "", "vault secret policies")
-	secretCmd.PersistentFlags().StringVar(&secretVaultRoles, "vault-roles", "", "vault secret roles")
-	secretCmd.PersistentFlags().BoolVarP(&secretVerbose, "verbose", "v", false, "verbose output")
-	secretCmd.PersistentFlags().BoolVarP(&secretDryRun, "dry-run", "n", false, "dry run")
+func (c *Cmd) execSecretCmd(cmd *cobra.Command, args []string) {
+	opts := vault.Opts{
+		Verbose: c.secretFlags.verbose,
+		DryRun:  c.secretFlags.dryRun,
+	}
+	if c.secretFlags.vaultPolicies != "" {
+		if err := vault.AddPolicies(context.Background(), c.secretFlags.vaultPolicies, opts); err != nil {
+			log.Fatalln(err)
+		}
+	}
+	if c.secretFlags.vaultRoles != "" {
+		if err := vault.AddRoles(context.Background(), c.secretFlags.vaultRoles, opts); err != nil {
+			log.Fatalln(err)
+		}
+	}
 }
