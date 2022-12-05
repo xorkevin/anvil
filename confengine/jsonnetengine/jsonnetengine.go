@@ -21,6 +21,17 @@ type (
 func New(fsys fs.FS) *Engine {
 	vm := jsonnet.MakeVM()
 	vm.Importer(newFSImporter(fsys))
+	for k, v := range confengine.DefaultFunctions {
+		params := make(ast.Identifiers, 0, len(v.Params))
+		for _, i := range v.Params {
+			params = append(params, ast.Identifier(i))
+		}
+		vm.NativeFunction(&jsonnet.NativeFunction{
+			Name:   k,
+			Func:   v.Function,
+			Params: params,
+		})
+	}
 	return &Engine{
 		vm: vm,
 	}
@@ -31,17 +42,6 @@ func (e *Engine) Exec(name string, vars confengine.Vars) ([]byte, error) {
 	e.vm.ExtReset()
 	for k, v := range vars {
 		e.vm.ExtCode(k, string(v))
-	}
-	for k, v := range (confengine.Functions{}) {
-		params := make(ast.Identifiers, 0, len(v.Params))
-		for _, i := range v.Params {
-			params = append(params, ast.Identifier(i))
-		}
-		e.vm.NativeFunction(&jsonnet.NativeFunction{
-			Name:   k,
-			Func:   v.Function,
-			Params: params,
-		})
 	}
 	b, err := e.vm.EvaluateFile(name)
 	if err != nil {

@@ -3,6 +3,7 @@ package confengine
 import (
 	"path"
 
+	"xorkevin.dev/anvil/util/kjson"
 	"xorkevin.dev/kerrors"
 )
 
@@ -21,13 +22,6 @@ func (e errUnknownExt) Error() string {
 
 type (
 	Vars = map[string][]byte
-
-	Function    = func(args []interface{}) (interface{}, error)
-	FunctionDef struct {
-		Function Function
-		Params   []string
-	}
-	Functions = map[string]FunctionDef
 
 	// ConfEngine is a config engine
 	ConfEngine interface {
@@ -51,3 +45,27 @@ func (m Map) Exec(name string, env map[string][]byte) ([]byte, error) {
 	}
 	return b, nil
 }
+
+type (
+	Function    = func(args []interface{}) (interface{}, error)
+	FunctionDef struct {
+		Function Function
+		Params   []string
+	}
+	Functions = map[string]FunctionDef
+)
+
+var (
+	DefaultFunctions = Functions{
+		"marshalJSON": FunctionDef{
+			Function: func(args []interface{}) (interface{}, error) {
+				b, err := kjson.Marshal(args[0])
+				if err != nil {
+					return nil, kerrors.WithMsg(err, "Failed to marshal json")
+				}
+				return string(b), nil
+			},
+			Params: []string{"v"},
+		},
+	}
+)
