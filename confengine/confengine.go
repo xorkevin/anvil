@@ -57,7 +57,7 @@ type (
 
 var (
 	DefaultFunctions = Functions{
-		"marshalJSON": FunctionDef{
+		"JSONMarshal": FunctionDef{
 			Function: func(args []interface{}) (interface{}, error) {
 				b, err := kjson.Marshal(args[0])
 				if err != nil {

@@ -3,6 +3,7 @@ package jsonnetengine
 import (
 	"io/fs"
 	"path"
+	"strings"
 
 	"github.com/google/go-jsonnet"
 	"github.com/google/go-jsonnet/ast"
@@ -18,9 +19,10 @@ type (
 )
 
 // New creates a new [*Engine] which is rooted at a particular file system
-func New(fsys fs.FS) *Engine {
+func New(fsys fs.FS, stlname string) *Engine {
 	vm := jsonnet.MakeVM()
-	vm.Importer(newFSImporter(fsys))
+	var stl strings.Builder
+	stl.WriteString("{\n")
 	for k, v := range confengine.DefaultFunctions {
 		params := make(ast.Identifiers, 0, len(v.Params))
 		for _, i := range v.Params {
@@ -31,7 +33,22 @@ func New(fsys fs.FS) *Engine {
 			Func:   v.Function,
 			Params: params,
 		})
+		paramstr := ""
+		if len(v.Params) > 0 {
+			paramstr = strings.Join(v.Params, ", ")
+		}
+		stl.WriteString(k)
+		stl.WriteString("(")
+		stl.WriteString(paramstr)
+		stl.WriteString(`):: std.native("`)
+		stl.WriteString(k)
+		stl.WriteString(`")(`)
+		stl.WriteString(paramstr)
+		stl.WriteString("),\n")
 	}
+	stl.WriteString("}\n")
+	stlstr := stl.String()
+	vm.Importer(newFSImporter(fsys, stlname, stlstr))
 	return &Engine{
 		vm: vm,
 	}
@@ -54,13 +71,17 @@ type (
 	fsImporter struct {
 		root     fs.FS
 		contents map[string]jsonnet.Contents
+		stlname  string
+		stl      jsonnet.Contents
 	}
 )
 
-func newFSImporter(root fs.FS) *fsImporter {
+func newFSImporter(root fs.FS, stlname string, stl string) *fsImporter {
 	return &fsImporter{
 		root:     root,
 		contents: map[string]jsonnet.Contents{},
+		stlname:  stlname,
+		stl:      jsonnet.MakeContents(stl),
 	}
 }
 
@@ -79,6 +100,10 @@ func (f *fsImporter) importFile(fspath string) (jsonnet.Contents, error) {
 
 // Import implements [github.com/google/go-jsonnet.Importer]
 func (f *fsImporter) Import(importedFrom, importedPath string) (jsonnet.Contents, string, error) {
+	if importedPath == f.stlname {
+		return f.stl, f.stlname, nil
+	}
+
 	var fspath string
 	if path.IsAbs(importedPath) {
 		// make absolute paths relative to the root fs
