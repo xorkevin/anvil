@@ -1,14 +1,16 @@
 module xorkevin.dev/anvil
 
-go 1.17
+go 1.19
 
 require (
+	github.com/google/go-jsonnet v0.19.1
 	github.com/hashicorp/vault/api v1.8.2
 	github.com/spf13/cobra v1.6.1
 	github.com/spf13/viper v1.14.0
 	github.com/stretchr/testify v1.8.1
 	golang.org/x/mod v0.7.0
 	gopkg.in/yaml.v3 v3.0.1
+	xorkevin.dev/kerrors v0.1.4
 )
 
 require (
@@ -72,4 +74,5 @@ require (
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/square/go-jose.v2 v2.5.1 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
+	sigs.k8s.io/yaml v1.1.0 // indirect
 )
