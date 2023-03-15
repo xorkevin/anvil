@@ -1,4 +1,4 @@
-package component
+package kjson
 
 import (
 	"encoding/json"
@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func Test_jsonMergePatch(t *testing.T) {
+func Test_MergePatch(t *testing.T) {
 	t.Parallel()
 
 	for _, tc := range []struct {
@@ -158,16 +158,16 @@ func Test_jsonMergePatch(t *testing.T) {
 			t.Parallel()
 			assert := require.New(t)
 
-			var target, patch, expected interface{}
+			var target, patch, expected any
 			assert.NoError(json.Unmarshal([]byte(tc.Target), &target))
 			assert.NoError(json.Unmarshal([]byte(tc.Patch), &patch))
 			assert.NoError(json.Unmarshal([]byte(tc.Expected), &expected))
-			assert.Equal(expected, jsonMergePatch(target, patch))
+			assert.Equal(expected, MergePatch(target, patch))
 		})
 	}
 }
 
-func Test_jsonMergePatchObj(t *testing.T) {
+func Test_MergePatchObj(t *testing.T) {
 	t.Parallel()
 
 	for _, tc := range []struct {
@@ -298,11 +298,11 @@ func Test_jsonMergePatchObj(t *testing.T) {
 			t.Parallel()
 			assert := require.New(t)
 
-			var target, patch, expected map[string]interface{}
+			var target, patch, expected map[string]any
 			assert.NoError(json.Unmarshal([]byte(tc.Target), &target))
 			assert.NoError(json.Unmarshal([]byte(tc.Patch), &patch))
 			assert.NoError(json.Unmarshal([]byte(tc.Expected), &expected))
-			assert.Equal(expected, jsonMergePatchObj(target, patch))
+			assert.Equal(expected, MergePatchObj(target, patch))
 		})
 	}
 }

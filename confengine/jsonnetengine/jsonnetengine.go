@@ -14,15 +14,25 @@ import (
 type (
 	// Engine is a jsonnet config engine
 	Engine struct {
-		vm *jsonnet.VM
+		vm   *jsonnet.VM
+		args map[string]any
 	}
 )
 
 // New creates a new [*Engine] which is rooted at a particular file system
 func New(fsys fs.FS, stlname string) *Engine {
 	vm := jsonnet.MakeVM()
+	eng := &Engine{
+		vm: vm,
+	}
 	var stl strings.Builder
 	stl.WriteString("{\n")
+	vm.NativeFunction(&jsonnet.NativeFunction{
+		Name:   "envArgs",
+		Func:   eng.getEnvArgs,
+		Params: ast.Identifiers{},
+	})
+	stl.WriteString("envArgs():: std.native(\"envArgs\")(),\n")
 	for k, v := range confengine.DefaultFunctions {
 		params := make(ast.Identifiers, 0, len(v.Params))
 		for _, i := range v.Params {
@@ -49,17 +59,19 @@ func New(fsys fs.FS, stlname string) *Engine {
 	stl.WriteString("}\n")
 	stlstr := stl.String()
 	vm.Importer(newFSImporter(fsys, stlname, stlstr))
-	return &Engine{
-		vm: vm,
-	}
+	return eng
 }
 
-// Exec implements [xorkevin.dev/anvil/confengine.ConfEngine] and generates config using jsonnet
-func (e *Engine) Exec(name string, vars confengine.Vars) ([]byte, error) {
-	e.vm.ExtReset()
-	for k, v := range vars {
-		e.vm.ExtCode(k, string(v))
+func (e *Engine) getEnvArgs(args []any) (any, error) {
+	if len(args) != 0 {
+		return nil, kerrors.WithKind(nil, confengine.ErrorInvalidArgs, "envArgs does not take arguments")
 	}
+	return e.args, nil
+}
+
+// Exec implements [confengine.ConfEngine] and generates config using jsonnet
+func (e *Engine) Exec(name string, args map[string]any) ([]byte, error) {
+	e.args = args
 	b, err := e.vm.EvaluateFile(name)
 	if err != nil {
 		return nil, kerrors.WithMsg(err, "Failed to generate jsonnet")

@@ -11,6 +11,7 @@ import (
 	"text/template"
 
 	"xorkevin.dev/anvil/configfile"
+	"xorkevin.dev/anvil/util/kjson"
 )
 
 const (
@@ -219,7 +220,7 @@ func mergeSubcomponents(components map[string]componentData, patch map[string]Pa
 	}
 	for k, v := range patch {
 		t := merged[k]
-		t.Vars = jsonMergePatchObj(t.Vars, v.Vars)
+		t.Vars = kjson.MergePatchObj(t.Vars, v.Vars)
 		t.Templates = v.Templates
 		t.Components = v.Components
 	}
@@ -232,7 +233,7 @@ func (c *ConfigFile) Init(patch *Patch) (*Component, []Subcomponent, error) {
 		patch = &Patch{}
 	}
 
-	vars := jsonMergePatchObj(c.Vars, patch.Vars)
+	vars := kjson.MergePatchObj(c.Vars, patch.Vars)
 
 	var gencfg genConfigData
 	if c.configTpl != nil {
