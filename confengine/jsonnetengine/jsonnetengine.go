@@ -42,10 +42,10 @@ func New(fsys fs.FS, stlname string) *Engine {
 			params: []string{},
 		},
 		{
-			name: "JSONMarshal",
+			name: "jsonMarshal",
 			fn: func(args []any) (any, error) {
 				if len(args) != 1 {
-					return nil, kerrors.WithKind(nil, confengine.ErrorInvalidArgs, "JSONMarshal needs 1 argument")
+					return nil, kerrors.WithKind(nil, confengine.ErrorInvalidArgs, "jsonMarshal needs 1 argument")
 				}
 				b, err := kjson.Marshal(args[0])
 				if err != nil {
@@ -56,10 +56,10 @@ func New(fsys fs.FS, stlname string) *Engine {
 			params: []string{"v"},
 		},
 		{
-			name: "JSONMergePatch",
+			name: "jsonMergePatch",
 			fn: func(args []any) (any, error) {
 				if len(args) != 2 {
-					return nil, kerrors.WithKind(nil, confengine.ErrorInvalidArgs, "JSONMergePatch needs 2 arguments")
+					return nil, kerrors.WithKind(nil, confengine.ErrorInvalidArgs, "jsonMergePatch needs 2 arguments")
 				}
 				return kjson.MergePatch(args[0], args[1]), nil
 			},
