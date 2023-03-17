@@ -8,6 +8,7 @@ import (
 	"github.com/google/go-jsonnet"
 	"github.com/google/go-jsonnet/ast"
 	"xorkevin.dev/anvil/confengine"
+	"xorkevin.dev/anvil/util/kjson"
 	"xorkevin.dev/kerrors"
 )
 
@@ -16,6 +17,12 @@ type (
 	Engine struct {
 		vm   *jsonnet.VM
 		args map[string]any
+	}
+
+	funcDef struct {
+		name   string
+		fn     func(args []any) (any, error)
+		params []string
 	}
 )
 
@@ -27,31 +34,56 @@ func New(fsys fs.FS, stlname string) *Engine {
 	}
 	var stl strings.Builder
 	stl.WriteString("{\n")
-	vm.NativeFunction(&jsonnet.NativeFunction{
-		Name:   "envArgs",
-		Func:   eng.getEnvArgs,
-		Params: ast.Identifiers{},
-	})
-	stl.WriteString("envArgs():: std.native(\"envArgs\")(),\n")
-	for k, v := range confengine.DefaultFunctions {
-		params := make(ast.Identifiers, 0, len(v.Params))
-		for _, i := range v.Params {
+
+	for _, v := range []funcDef{
+		{
+			name:   "envArgs",
+			fn:     eng.getEnvArgs,
+			params: []string{},
+		},
+		{
+			name: "JSONMarshal",
+			fn: func(args []any) (any, error) {
+				if len(args) != 1 {
+					return nil, kerrors.WithKind(nil, confengine.ErrorInvalidArgs, "JSONMarshal needs 1 argument")
+				}
+				b, err := kjson.Marshal(args[0])
+				if err != nil {
+					return nil, kerrors.WithMsg(err, "Failed to marshal json")
+				}
+				return string(b), nil
+			},
+			params: []string{"v"},
+		},
+		{
+			name: "JSONMergePatch",
+			fn: func(args []any) (any, error) {
+				if len(args) != 2 {
+					return nil, kerrors.WithKind(nil, confengine.ErrorInvalidArgs, "JSONMergePatch needs 2 arguments")
+				}
+				return kjson.MergePatch(args[0], args[1]), nil
+			},
+			params: []string{"a", "b"},
+		},
+	} {
+		params := make(ast.Identifiers, 0, len(v.params))
+		for _, i := range v.params {
 			params = append(params, ast.Identifier(i))
 		}
 		vm.NativeFunction(&jsonnet.NativeFunction{
-			Name:   k,
-			Func:   v.Function,
+			Name:   v.name,
+			Func:   v.fn,
 			Params: params,
 		})
 		paramstr := ""
-		if len(v.Params) > 0 {
-			paramstr = strings.Join(v.Params, ", ")
+		if len(v.params) > 0 {
+			paramstr = strings.Join(v.params, ", ")
 		}
-		stl.WriteString(k)
+		stl.WriteString(v.name)
 		stl.WriteString("(")
 		stl.WriteString(paramstr)
 		stl.WriteString(`):: std.native("`)
-		stl.WriteString(k)
+		stl.WriteString(v.name)
 		stl.WriteString(`")(`)
 		stl.WriteString(paramstr)
 		stl.WriteString("),\n")
@@ -121,7 +153,11 @@ func (f *fsImporter) Import(importedFrom, importedPath string) (jsonnet.Contents
 		// make absolute paths relative to the root fs
 		fspath = path.Clean(importedPath[1:])
 	} else {
+		// paths are otherwise relative to the file importing them
 		fspath = path.Join(importedFrom, importedPath)
+	}
+	if !fs.ValidPath(fspath) {
+		return jsonnet.Contents{}, "", kerrors.WithMsg(nil, "Invalid filepath")
 	}
 	c, err := f.importFile(fspath)
 	if err != nil {
