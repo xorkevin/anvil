@@ -15,16 +15,13 @@ var (
 )
 
 type (
-	errUnknownExt struct{}
+	errUnknownExt  struct{}
+	errInvalidArgs struct{}
 )
 
 func (e errUnknownExt) Error() string {
 	return "Unknown config ext"
 }
-
-type (
-	errInvalidArgs struct{}
-)
 
 func (e errInvalidArgs) Error() string {
 	return "Invalid args"

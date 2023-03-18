@@ -19,7 +19,7 @@ type (
 		args map[string]any
 	}
 
-	funcDef struct {
+	NativeFunc struct {
 		name   string
 		fn     func(args []any) (any, error)
 		params []string
@@ -27,7 +27,7 @@ type (
 )
 
 // New creates a new [*Engine] which is rooted at a particular file system
-func New(fsys fs.FS, stlname string) *Engine {
+func New(fsys fs.FS, stdname string, nativeFuncs []NativeFunc) *Engine {
 	vm := jsonnet.MakeVM()
 	eng := &Engine{
 		vm: vm,
@@ -35,7 +35,7 @@ func New(fsys fs.FS, stlname string) *Engine {
 	var stl strings.Builder
 	stl.WriteString("{\n")
 
-	for _, v := range []funcDef{
+	for _, v := range append([]NativeFunc{
 		{
 			name:   "envArgs",
 			fn:     eng.getEnvArgs,
@@ -65,7 +65,7 @@ func New(fsys fs.FS, stlname string) *Engine {
 			},
 			params: []string{"a", "b"},
 		},
-	} {
+	}, nativeFuncs...) {
 		params := make(ast.Identifiers, 0, len(v.params))
 		for _, i := range v.params {
 			params = append(params, ast.Identifier(i))
@@ -90,7 +90,7 @@ func New(fsys fs.FS, stlname string) *Engine {
 	}
 	stl.WriteString("}\n")
 	stlstr := stl.String()
-	vm.Importer(newFSImporter(fsys, stlname, stlstr))
+	vm.Importer(newFSImporter(fsys, stdname, stlstr))
 	return eng
 }
 
@@ -115,16 +115,16 @@ type (
 	fsImporter struct {
 		root     fs.FS
 		contents map[string]jsonnet.Contents
-		stlname  string
+		stdname  string
 		stl      jsonnet.Contents
 	}
 )
 
-func newFSImporter(root fs.FS, stlname string, stl string) *fsImporter {
+func newFSImporter(root fs.FS, stdname string, stl string) *fsImporter {
 	return &fsImporter{
 		root:     root,
 		contents: map[string]jsonnet.Contents{},
-		stlname:  stlname,
+		stdname:  stdname,
 		stl:      jsonnet.MakeContents(stl),
 	}
 }
@@ -144,8 +144,8 @@ func (f *fsImporter) importFile(fspath string) (jsonnet.Contents, error) {
 
 // Import implements [github.com/google/go-jsonnet.Importer]
 func (f *fsImporter) Import(importedFrom, importedPath string) (jsonnet.Contents, string, error) {
-	if importedPath == f.stlname {
-		return f.stl, f.stlname, nil
+	if importedPath == f.stdname {
+		return f.stl, f.stdname, nil
 	}
 
 	var fspath string
@@ -154,7 +154,7 @@ func (f *fsImporter) Import(importedFrom, importedPath string) (jsonnet.Contents
 		fspath = path.Clean(importedPath[1:])
 	} else {
 		// paths are otherwise relative to the file importing them
-		fspath = path.Join(importedFrom, importedPath)
+		fspath = path.Join(path.Dir(importedFrom), importedPath)
 	}
 	if !fs.ValidPath(fspath) {
 		return jsonnet.Contents{}, "", kerrors.WithMsg(nil, "Invalid filepath")

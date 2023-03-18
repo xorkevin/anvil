@@ -19,29 +19,80 @@ func Test_Engine(t *testing.T) {
 	for _, tc := range []struct {
 		Name     string
 		Fsys     fs.FS
-		Stl      string
+		Std      string
 		Main     string
 		Args     map[string]any
 		Expected any
+		Err      error
 	}{
 		{
 			Name: "executes jsonnet",
 			Fsys: fstest.MapFS{
 				"config.jsonnet": &fstest.MapFile{
 					Data: []byte(`
+local anvil = import 'anvilstd.libsonnet';
+local args = anvil.envArgs();
+
+local world = import 'subdir/world.libsonnet';
+
 {
-  "hello": "world",
+  "hello": args.name,
+  "str": anvil.jsonMarshal({
+    "foo": "bar",
+  }),
+  "obj": anvil.jsonMergePatch(
+    {
+      "foo": {
+        "bar": "baz",
+      },
+      "hello": "world",
+    },
+    {
+      "foo": {
+        "bar": world.name,
+      },
+    },
+  ),
+}
+`),
+					Mode:    filemode,
+					ModTime: now,
+				},
+				"subdir/world.libsonnet": &fstest.MapFile{
+					Data: []byte(`
+local vars = import '/vars.libsonnet';
+
+{
+  "name": vars.worldname,
+}
+`),
+					Mode:    filemode,
+					ModTime: now,
+				},
+				"vars.libsonnet": &fstest.MapFile{
+					Data: []byte(`
+{
+  "worldname": "foo",
 }
 `),
 					Mode:    filemode,
 					ModTime: now,
 				},
 			},
-			Stl:  "lib/anvil.libsonnet",
+			Std:  "anvilstd.libsonnet",
 			Main: "config.jsonnet",
-			Args: map[string]any{},
+			Args: map[string]any{
+				"name": "world",
+			},
 			Expected: map[string]any{
 				"hello": "world",
+				"str":   "{\"foo\":\"bar\"}\n",
+				"obj": map[string]any{
+					"foo": map[string]any{
+						"bar": "foo",
+					},
+					"hello": "world",
+				},
 			},
 		},
 	} {
@@ -50,7 +101,7 @@ func Test_Engine(t *testing.T) {
 			t.Parallel()
 			assert := require.New(t)
 
-			jeng := New(tc.Fsys, tc.Stl)
+			jeng := New(tc.Fsys, tc.Std, nil)
 			outbytes, err := jeng.Exec(tc.Main, tc.Args)
 			assert.NoError(err)
 			var out any
