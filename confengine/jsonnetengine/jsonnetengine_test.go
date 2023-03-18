@@ -23,7 +23,6 @@ func Test_Engine(t *testing.T) {
 		Main     string
 		Args     map[string]any
 		Expected any
-		Err      error
 	}{
 		{
 			Name: "executes jsonnet",
