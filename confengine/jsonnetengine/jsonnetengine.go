@@ -157,7 +157,7 @@ func (f *fsImporter) Import(importedFrom, importedPath string) (jsonnet.Contents
 		fspath = path.Join(path.Dir(importedFrom), importedPath)
 	}
 	if !fs.ValidPath(fspath) {
-		return jsonnet.Contents{}, "", kerrors.WithMsg(nil, "Invalid filepath")
+		return jsonnet.Contents{}, "", kerrors.WithMsg(fs.ErrInvalid, "Invalid filepath")
 	}
 	c, err := f.importFile(fspath)
 	if err != nil {

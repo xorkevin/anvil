@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"xorkevin.dev/anvil/confengine"
 )
 
 func Test_Engine(t *testing.T) {
@@ -101,6 +102,9 @@ local vars = import '/vars.libsonnet';
 			assert := require.New(t)
 
 			jeng := New(tc.Fsys, tc.Std, nil)
+			{
+				var _ confengine.ConfEngine = jeng
+			}
 			outbytes, err := jeng.Exec(tc.Main, tc.Args)
 			assert.NoError(err)
 			var out any
