@@ -86,22 +86,22 @@ func merkelHash(fsys fs.FS, root string, p string, entry fs.DirEntry, hasher h2s
 		return "", false, nil
 	}
 
-	if err := func() error {
+	notEmpty, err := func() (bool, error) {
 		if entry.Type()&fs.ModeSymlink != 0 {
 			// symlink
 			dest, err := os.Readlink(path.Join(root, p))
 			if err != nil {
-				return kerrors.WithMsg(err, fmt.Sprintf("Failed to read symlink: %s", path.Join(root, p)))
+				return false, kerrors.WithMsg(err, fmt.Sprintf("Failed to read symlink: %s", path.Join(root, p)))
 			}
 			if _, err := io.WriteString(hash, dest); err != nil {
-				return kerrors.WithMsg(err, "Failed to write to hash")
+				return false, kerrors.WithMsg(err, "Failed to write to hash")
 			}
-			return nil
+			return true, nil
 		} else if !entry.IsDir() {
 			// regular file
 			f, err := fsys.Open(p)
 			if err != nil {
-				return kerrors.WithMsg(err, fmt.Sprintf("Failed to open file: %s", path.Join(root, p)))
+				return false, kerrors.WithMsg(err, fmt.Sprintf("Failed to open file: %s", path.Join(root, p)))
 			}
 			defer func() {
 				if err := f.Close(); err != nil {
@@ -109,39 +109,45 @@ func merkelHash(fsys fs.FS, root string, p string, entry fs.DirEntry, hasher h2s
 				}
 			}()
 			if _, err := io.Copy(hash, f); err != nil {
-				return kerrors.WithMsg(err, fmt.Sprintf("Failed reading file: %s", path.Join(root, p)))
+				return false, kerrors.WithMsg(err, fmt.Sprintf("Failed reading file: %s", path.Join(root, p)))
 			}
-			return nil
+			return true, nil
 		}
 		// directory
 		entries, err := fs.ReadDir(fsys, p)
 		if err != nil {
-			return kerrors.WithMsg(err, fmt.Sprintf("Failed reading dir: %s", path.Join(root, p)))
+			return false, kerrors.WithMsg(err, fmt.Sprintf("Failed reading dir: %s", path.Join(root, p)))
 		}
+		hasEntry := false
 		for _, i := range entries {
 			h, ok, err := merkelHash(fsys, root, path.Join(p, i.Name()), i, hasher, filter)
 			if err != nil {
-				return err
+				return false, err
 			}
 			if !ok {
 				continue
 			}
+			hasEntry = true
 			if _, err := io.WriteString(hash, i.Name()); err != nil {
-				return kerrors.WithMsg(err, "Failed to write to hash")
+				return false, kerrors.WithMsg(err, "Failed to write to hash")
 			}
 			if _, err := hash.Write([]byte{0}); err != nil {
-				return kerrors.WithMsg(err, "Failed to write to hash")
+				return false, kerrors.WithMsg(err, "Failed to write to hash")
 			}
 			if _, err := io.WriteString(hash, h); err != nil {
-				return kerrors.WithMsg(err, "Failed to write to hash")
+				return false, kerrors.WithMsg(err, "Failed to write to hash")
 			}
 			if _, err := hash.Write([]byte{0}); err != nil {
-				return kerrors.WithMsg(err, "Failed to write to hash")
+				return false, kerrors.WithMsg(err, "Failed to write to hash")
 			}
 		}
-		return nil
-	}(); err != nil {
+		return hasEntry, nil
+	}()
+	if err != nil {
 		return "", false, err
+	}
+	if !notEmpty {
+		return "", false, nil
 	}
 
 	if err := hash.Close(); err != nil {
