@@ -19,12 +19,8 @@ func (e mockEngine) Exec(name string, args map[string]any) ([]byte, error) {
 		return nil, err
 	}
 	var b bytes.Buffer
-	if _, err := io.WriteString(&b, name); err != nil {
-		return nil, err
-	}
-	if _, err := io.WriteString(&b, ": "); err != nil {
-		return nil, err
-	}
+	io.WriteString(&b, name)
+	io.WriteString(&b, ": ")
 	if _, err := b.Write(j); err != nil {
 		return nil, err
 	}

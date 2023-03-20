@@ -555,5 +555,7 @@ rsc.io/quote/v3 v3.1.0/go.mod h1:yEA65RcK8LyAZtP9Kv3t0HmxON59tX3rD+tICJqUlj0=
 rsc.io/sampler v1.3.0/go.mod h1:T1hPZKmBbMNahiBKFy5HrXp6adAjACjK9JXDnKaTXpA=
 sigs.k8s.io/yaml v1.1.0 h1:4A07+ZFc2wgJwo8YNlQpr1rVlgUDlxXHhPJciaPY5gs=
 sigs.k8s.io/yaml v1.1.0/go.mod h1:UJmg0vDUVViEyp3mgSv9WPwZCDxu4rQW1olrI1uml+o=
+xorkevin.dev/hunter2 v0.2.4 h1:G3dQYru+td19NbRav5hlN/SSwODhVWPHjUwPrh9RvFo=
+xorkevin.dev/hunter2 v0.2.4/go.mod h1:eBwMewfDwh7BMHMLnYWvy1ephSoaDk61LbvSBqhIZZ0=
 xorkevin.dev/kerrors v0.1.5 h1:vszMcLbQjGn2DuqaQZNZNTbGw17qKvfH3X6E1s+1Iac=
 xorkevin.dev/kerrors v0.1.5/go.mod h1:HnfCCdUvvu5aXhHxO8TPa8KU3r5X2c2QZRbfE+HBLvc=

@@ -22,6 +22,7 @@ type (
 	Fetcher struct {
 		fsys       fs.FS
 		cacheDir   string
+		GitDir     string
 		GitBin     string
 		Stdout     io.Writer
 		Stderr     io.Writer
@@ -36,6 +37,7 @@ type (
 		Branch       string `mapstructure:"branch"`
 		Commit       string `mapstructure:"commit"`
 		ShallowSince string `mapstructure:"shallow_since"`
+		Checksum     string `mapstructure:"checksum"`
 	}
 )
 
@@ -44,6 +46,7 @@ func New(cacheDir string) *Fetcher {
 	return &Fetcher{
 		fsys:       os.DirFS(cacheDir),
 		cacheDir:   cacheDir,
+		GitDir:     ".git",
 		GitBin:     "git",
 		Stdout:     os.Stdout,
 		Stderr:     os.Stderr,
@@ -76,12 +79,12 @@ func (f *Fetcher) repoPath(opts gitFetchOpts) (string, error) {
 }
 
 func (f *Fetcher) checkRepoDir(repodir string) (bool, error) {
-	stat, err := fs.Stat(f.fsys, repodir)
+	info, err := fs.Stat(f.fsys, repodir)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return false, kerrors.WithMsg(err, "Failed to check repo")
 	}
 	cloned := err == nil
-	if !stat.IsDir() {
+	if !info.IsDir() {
 		return false, kerrors.WithKind(nil, repofetcher.ErrorInvalidCache, fmt.Sprintf("Cached repo is not a directory: %s", repodir))
 	}
 	return cloned, nil
@@ -120,7 +123,9 @@ func (f *Fetcher) Fetch(ctx context.Context, opts map[string]any) (fs.FS, error)
 	if err != nil {
 		return nil, kerrors.WithMsg(err, fmt.Sprintf("Failed to get directory: %s", repodir))
 	}
-	// TODO check checksum if present
+	if fetchOpts.Checksum != "" {
+		// TODO check checksum if present
+	}
 	return rfsys, nil
 }
 
