@@ -9,11 +9,14 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"strings"
 
 	"github.com/mitchellh/mapstructure"
 	"xorkevin.dev/anvil/repofetcher"
+	"xorkevin.dev/hunter2/h2streamhash"
+	"xorkevin.dev/hunter2/h2streamhash/blake2bstream"
 	"xorkevin.dev/kerrors"
 )
 
@@ -22,6 +25,7 @@ type (
 	Fetcher struct {
 		fsys       fs.FS
 		cacheDir   string
+		verifier   *h2streamhash.Verifier
 		GitDir     string
 		GitBin     string
 		Stdout     io.Writer
@@ -43,9 +47,12 @@ type (
 
 // New creates a new [*Fetcher] which is rooted at a particular file system
 func New(cacheDir string) *Fetcher {
+	v := h2streamhash.NewVerifier()
+	v.Register(blake2bstream.NewHasher(blake2bstream.Config{}))
 	return &Fetcher{
 		fsys:       os.DirFS(cacheDir),
 		cacheDir:   cacheDir,
+		verifier:   v,
 		GitDir:     ".git",
 		GitBin:     "git",
 		Stdout:     os.Stdout,
@@ -124,7 +131,16 @@ func (f *Fetcher) Fetch(ctx context.Context, opts map[string]any) (fs.FS, error)
 		return nil, kerrors.WithMsg(err, fmt.Sprintf("Failed to get directory: %s", repodir))
 	}
 	if fetchOpts.Checksum != "" {
-		// TODO check checksum if present
+		if ok, err := repofetcher.MerkelTreeVerify(rfsys, path.Join(f.cacheDir, repodir), f.verifier, func(p string, entry fs.DirEntry) (bool, error) {
+			if entry.IsDir() && entry.Name() == f.GitDir {
+				return false, nil
+			}
+			return true, nil
+		}, fetchOpts.Checksum); err != nil {
+			return nil, kerrors.WithMsg(err, "Failed computing repo checksum")
+		} else if !ok {
+			return nil, kerrors.WithMsg(nil, "Repo failed integrity check")
+		}
 	}
 	return rfsys, nil
 }

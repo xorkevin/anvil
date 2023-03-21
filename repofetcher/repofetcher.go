@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"path"
+	"path/filepath"
 
 	"xorkevin.dev/hunter2/h2streamhash"
 	"xorkevin.dev/kerrors"
@@ -69,29 +70,42 @@ func (m Map) Fetch(ctx context.Context, kind string, opts map[string]any) (fs.FS
 	return fsys, nil
 }
 
-func merkelHash(fsys fs.FS, root string, p string, entry fs.DirEntry, hasher h2streamhash.Hasher, filter func(root string, p string, entry fs.DirEntry) (bool, error)) (string, bool, error) {
+type (
+	merkelHasher interface {
+		Hash() (h2streamhash.Hash, error)
+	}
+)
+
+func merkelHash(
+	fsys fs.FS,
+	root string,
+	p string,
+	entry fs.DirEntry,
+	hasher merkelHasher,
+	filter func(p string, entry fs.DirEntry) (bool, error),
+) (h2streamhash.Hash, error) {
 	hash, err := hasher.Hash()
 	if err != nil {
-		return "", false, kerrors.WithMsg(err, "Failed to construct hash")
+		return nil, kerrors.WithMsg(err, "Failed to construct hash")
 	}
 
 	if entry.Type()&(^(fs.ModeSymlink & fs.ModeDir)) != 0 {
 		// entry is not a regular file, symlink, or dir
-		return "", false, nil
+		return nil, nil
 	}
 
-	if ok, err := filter(root, p, entry); err != nil {
-		return "", false, err
+	if ok, err := filter(p, entry); err != nil {
+		return nil, err
 	} else if !ok {
-		return "", false, nil
+		return nil, nil
 	}
 
 	notEmpty, err := func() (bool, error) {
 		if entry.Type()&fs.ModeSymlink != 0 {
 			// symlink
-			dest, err := os.Readlink(path.Join(root, p))
+			dest, err := os.Readlink(filepath.Join(filepath.FromSlash(root), filepath.FromSlash(p)))
 			if err != nil {
-				return false, kerrors.WithMsg(err, fmt.Sprintf("Failed to read symlink: %s", path.Join(root, p)))
+				return false, kerrors.WithMsg(err, fmt.Sprintf("Failed to read symlink: %s", p))
 			}
 			if _, err := io.WriteString(hash, dest); err != nil {
 				return false, kerrors.WithMsg(err, "Failed to write to hash")
@@ -101,7 +115,7 @@ func merkelHash(fsys fs.FS, root string, p string, entry fs.DirEntry, hasher h2s
 			// regular file
 			f, err := fsys.Open(p)
 			if err != nil {
-				return false, kerrors.WithMsg(err, fmt.Sprintf("Failed to open file: %s", path.Join(root, p)))
+				return false, kerrors.WithMsg(err, fmt.Sprintf("Failed to open file: %s", p))
 			}
 			defer func() {
 				if err := f.Close(); err != nil {
@@ -109,22 +123,22 @@ func merkelHash(fsys fs.FS, root string, p string, entry fs.DirEntry, hasher h2s
 				}
 			}()
 			if _, err := io.Copy(hash, f); err != nil {
-				return false, kerrors.WithMsg(err, fmt.Sprintf("Failed reading file: %s", path.Join(root, p)))
+				return false, kerrors.WithMsg(err, fmt.Sprintf("Failed reading file: %s", p))
 			}
 			return true, nil
 		}
 		// directory
 		entries, err := fs.ReadDir(fsys, p)
 		if err != nil {
-			return false, kerrors.WithMsg(err, fmt.Sprintf("Failed reading dir: %s", path.Join(root, p)))
+			return false, kerrors.WithMsg(err, fmt.Sprintf("Failed reading dir: %s", p))
 		}
 		hasEntry := false
 		for _, i := range entries {
-			h, ok, err := merkelHash(fsys, root, path.Join(p, i.Name()), i, hasher, filter)
+			h, err := merkelHash(fsys, root, path.Join(p, i.Name()), i, hasher, filter)
 			if err != nil {
 				return false, err
 			}
-			if !ok {
+			if h == nil {
 				continue
 			}
 			hasEntry = true
@@ -134,7 +148,7 @@ func merkelHash(fsys fs.FS, root string, p string, entry fs.DirEntry, hasher h2s
 			if _, err := hash.Write([]byte{0}); err != nil {
 				return false, kerrors.WithMsg(err, "Failed to write to hash")
 			}
-			if _, err := io.WriteString(hash, h); err != nil {
+			if _, err := io.WriteString(hash, h.Sum()); err != nil {
 				return false, kerrors.WithMsg(err, "Failed to write to hash")
 			}
 			if _, err := hash.Write([]byte{0}); err != nil {
@@ -144,22 +158,75 @@ func merkelHash(fsys fs.FS, root string, p string, entry fs.DirEntry, hasher h2s
 		return hasEntry, nil
 	}()
 	if err != nil {
-		return "", false, err
+		return nil, err
 	}
 	if !notEmpty {
-		return "", false, nil
+		return nil, nil
 	}
 
 	if err := hash.Close(); err != nil {
-		return "", false, kerrors.WithMsg(err, "Failed to close hash")
+		return nil, kerrors.WithMsg(err, "Failed to close hash")
 	}
-	return hash.Sum(), true, nil
+	return hash, nil
 }
 
-func MerkelTreeHash(fsys fs.FS, root string, hasher h2streamhash.Hasher, filter func(root string, p string, entry fs.DirEntry) (bool, error)) (string, bool, error) {
+func merkelTreeHash(
+	fsys fs.FS,
+	root string,
+	hasher merkelHasher,
+	filter func(p string, entry fs.DirEntry) (bool, error),
+) (h2streamhash.Hash, error) {
 	info, err := fs.Stat(fsys, ".")
 	if err != nil {
-		return "", false, kerrors.WithMsg(err, fmt.Sprintf("Failed to read file: %s", root))
+		return nil, kerrors.WithMsg(err, fmt.Sprintf("Failed to read dir: %s", root))
 	}
-	return merkelHash(fsys, root, ".", fs.FileInfoToDirEntry(info), hasher, filter)
+	h, err := merkelHash(fsys, root, ".", fs.FileInfoToDirEntry(info), hasher, filter)
+	if err != nil {
+		return nil, err
+	}
+	if h == nil {
+		h, err = hasher.Hash()
+		if err != nil {
+			return nil, kerrors.WithMsg(err, "Failed to construct hash")
+		}
+	}
+	return h, nil
+}
+
+func MerkelTreeHash(
+	fsys fs.FS,
+	root string,
+	hasher h2streamhash.Hasher,
+	filter func(p string, entry fs.DirEntry) (bool, error),
+) (string, error) {
+	h, err := merkelTreeHash(fsys, root, hasher, filter)
+	if err != nil {
+		return "", err
+	}
+	return h.Sum(), nil
+}
+
+type (
+	verifierHasher struct {
+		verifier *h2streamhash.Verifier
+		checksum string
+	}
+)
+
+func (v *verifierHasher) Hash() (h2streamhash.Hash, error) {
+	return v.verifier.Verify(v.checksum)
+}
+
+func MerkelTreeVerify(
+	fsys fs.FS,
+	root string,
+	verifier *h2streamhash.Verifier,
+	filter func(p string, entry fs.DirEntry) (bool, error),
+	checksum string,
+) (bool, error) {
+	h, err := merkelTreeHash(fsys, root, &verifierHasher{verifier: verifier, checksum: checksum}, filter)
+	if err != nil {
+		return false, err
+	}
+	return h.Verify(checksum)
 }
