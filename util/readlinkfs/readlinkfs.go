@@ -64,7 +64,11 @@ func (f *readlinkFS) Glob(pattern string) ([]string, error) {
 }
 
 func (f *readlinkFS) Sub(dir string) (fs.FS, error) {
-	return fs.Sub(f.fsys, dir)
+	fsys, err := fs.Sub(f.fsys, dir)
+	if err != nil {
+		return nil, err
+	}
+	return New(fsys, path.Join(f.dir, dir)), nil
 }
 
 func (f *readlinkFS) ReadLink(name string) (string, error) {
