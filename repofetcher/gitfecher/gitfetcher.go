@@ -15,6 +15,7 @@ import (
 
 	"github.com/mitchellh/mapstructure"
 	"xorkevin.dev/anvil/repofetcher"
+	"xorkevin.dev/anvil/util/readlinkfs"
 	"xorkevin.dev/hunter2/h2streamhash"
 	"xorkevin.dev/hunter2/h2streamhash/blake2bstream"
 	"xorkevin.dev/kerrors"
@@ -130,8 +131,9 @@ func (f *Fetcher) Fetch(ctx context.Context, opts map[string]any) (fs.FS, error)
 	if err != nil {
 		return nil, kerrors.WithMsg(err, fmt.Sprintf("Failed to get directory: %s", repodir))
 	}
+	rfsys = readlinkfs.New(rfsys, path.Join(f.cacheDir, repodir))
 	if fetchOpts.Checksum != "" {
-		if ok, err := repofetcher.MerkelTreeVerify(rfsys, path.Join(f.cacheDir, repodir), f.verifier, func(p string, entry fs.DirEntry) (bool, error) {
+		if ok, err := repofetcher.MerkelTreeVerify(rfsys, f.verifier, func(p string, entry fs.DirEntry) (bool, error) {
 			if entry.IsDir() && entry.Name() == f.GitDir {
 				return false, nil
 			}

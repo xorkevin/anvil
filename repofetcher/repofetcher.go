@@ -6,10 +6,9 @@ import (
 	"io"
 	"io/fs"
 	"log"
-	"os"
 	"path"
-	"path/filepath"
 
+	"xorkevin.dev/anvil/util/readlinkfs"
 	"xorkevin.dev/hunter2/h2streamhash"
 	"xorkevin.dev/kerrors"
 )
@@ -78,7 +77,6 @@ type (
 
 func merkelHash(
 	fsys fs.FS,
-	root string,
 	p string,
 	entry fs.DirEntry,
 	hasher merkelHasher,
@@ -103,7 +101,7 @@ func merkelHash(
 	notEmpty, err := func() (bool, error) {
 		if entry.Type()&fs.ModeSymlink != 0 {
 			// symlink
-			dest, err := os.Readlink(filepath.Join(filepath.FromSlash(root), filepath.FromSlash(p)))
+			dest, err := readlinkfs.ReadLink(fsys, p)
 			if err != nil {
 				return false, kerrors.WithMsg(err, fmt.Sprintf("Failed to read symlink: %s", p))
 			}
@@ -134,7 +132,7 @@ func merkelHash(
 		}
 		hasEntry := false
 		for _, i := range entries {
-			h, err := merkelHash(fsys, root, path.Join(p, i.Name()), i, hasher, filter)
+			h, err := merkelHash(fsys, path.Join(p, i.Name()), i, hasher, filter)
 			if err != nil {
 				return false, err
 			}
@@ -172,15 +170,14 @@ func merkelHash(
 
 func merkelTreeHash(
 	fsys fs.FS,
-	root string,
 	hasher merkelHasher,
 	filter func(p string, entry fs.DirEntry) (bool, error),
 ) (h2streamhash.Hash, error) {
 	info, err := fs.Stat(fsys, ".")
 	if err != nil {
-		return nil, kerrors.WithMsg(err, fmt.Sprintf("Failed to read dir: %s", root))
+		return nil, kerrors.WithMsg(err, "Failed to read dir")
 	}
-	h, err := merkelHash(fsys, root, ".", fs.FileInfoToDirEntry(info), hasher, filter)
+	h, err := merkelHash(fsys, ".", fs.FileInfoToDirEntry(info), hasher, filter)
 	if err != nil {
 		return nil, err
 	}
@@ -195,11 +192,10 @@ func merkelTreeHash(
 
 func MerkelTreeHash(
 	fsys fs.FS,
-	root string,
 	hasher h2streamhash.Hasher,
 	filter func(p string, entry fs.DirEntry) (bool, error),
 ) (string, error) {
-	h, err := merkelTreeHash(fsys, root, hasher, filter)
+	h, err := merkelTreeHash(fsys, hasher, filter)
 	if err != nil {
 		return "", err
 	}
@@ -219,12 +215,11 @@ func (v *verifierHasher) Hash() (h2streamhash.Hash, error) {
 
 func MerkelTreeVerify(
 	fsys fs.FS,
-	root string,
 	verifier *h2streamhash.Verifier,
 	filter func(p string, entry fs.DirEntry) (bool, error),
 	checksum string,
 ) (bool, error) {
-	h, err := merkelTreeHash(fsys, root, &verifierHasher{verifier: verifier, checksum: checksum}, filter)
+	h, err := merkelTreeHash(fsys, &verifierHasher{verifier: verifier, checksum: checksum}, filter)
 	if err != nil {
 		return false, err
 	}
