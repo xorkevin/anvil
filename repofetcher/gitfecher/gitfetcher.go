@@ -46,7 +46,7 @@ type (
 	}
 )
 
-// New creates a new [*Fetcher] which is rooted at a particular file system
+// New creates a new git [*Fetcher] which is rooted at a particular file system
 func New(cacheDir string) *Fetcher {
 	v := h2streamhash.NewVerifier()
 	v.Register(blake2bstream.NewHasher(blake2bstream.Config{}))
