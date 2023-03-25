@@ -31,7 +31,6 @@ type (
 		GitCmd     GitCmd
 		NoNetwork  bool
 		ForceFetch bool
-		Verbose    bool
 	}
 
 	GitFetchOpts struct {
@@ -60,7 +59,6 @@ func New(cacheDir string) *Fetcher {
 		GitCmd:     NewGitBin(cacheDir),
 		NoNetwork:  false,
 		ForceFetch: false,
-		Verbose:    false,
 	}
 }
 
@@ -92,7 +90,7 @@ func (f *Fetcher) checkRepoDir(repodir string) (bool, error) {
 		return false, kerrors.WithMsg(err, "Failed to check repo")
 	}
 	cloned := err == nil
-	if !info.IsDir() {
+	if cloned && !info.IsDir() {
 		return false, kerrors.WithKind(nil, repofetcher.ErrorInvalidCache, fmt.Sprintf("Cached repo is not a directory: %s", repodir))
 	}
 	return cloned, nil
@@ -153,6 +151,7 @@ type (
 		Bin      string
 		Stdout   io.Writer
 		Stderr   io.Writer
+		Quiet    bool
 	}
 )
 
@@ -162,6 +161,7 @@ func NewGitBin(cacheDir string) *GitBin {
 		Bin:      "git",
 		Stdout:   os.Stdout,
 		Stderr:   os.Stderr,
+		Quiet:    false,
 	}
 }
 
@@ -195,8 +195,10 @@ func (g *GitBin) GitClone(ctx context.Context, repodir string, opts GitFetchOpts
 }
 
 func (g *GitBin) runCmd(cmd *exec.Cmd, dir string) error {
-	cmd.Stdout = g.Stdout
-	cmd.Stderr = g.Stderr
+	if !g.Quiet {
+		cmd.Stdout = g.Stdout
+		cmd.Stderr = g.Stderr
+	}
 	cmd.Env = os.Environ()
 	if err := cmd.Run(); err != nil {
 		return err
