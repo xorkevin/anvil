@@ -28,21 +28,23 @@ type (
 		cacheDir   string
 		verifier   *h2streamhash.Verifier
 		GitDir     string
-		GitBin     string
-		Stdout     io.Writer
-		Stderr     io.Writer
+		GitCmd     GitCmd
 		NoNetwork  bool
 		ForceFetch bool
 		Verbose    bool
 	}
 
-	gitFetchOpts struct {
+	GitFetchOpts struct {
 		Repo         string `mapstructure:"repo"`
 		Tag          string `mapstructure:"tag"`
 		Branch       string `mapstructure:"branch"`
 		Commit       string `mapstructure:"commit"`
 		ShallowSince string `mapstructure:"shallow_since"`
 		Checksum     string `mapstructure:"checksum"`
+	}
+
+	GitCmd interface {
+		GitClone(ctx context.Context, repodir string, opts GitFetchOpts) error
 	}
 )
 
@@ -55,16 +57,14 @@ func New(cacheDir string) *Fetcher {
 		cacheDir:   cacheDir,
 		verifier:   v,
 		GitDir:     ".git",
-		GitBin:     "git",
-		Stdout:     os.Stdout,
-		Stderr:     os.Stderr,
+		GitCmd:     NewGitBin(cacheDir),
 		NoNetwork:  false,
 		ForceFetch: false,
 		Verbose:    false,
 	}
 }
 
-func (f *Fetcher) repoPath(opts gitFetchOpts) (string, error) {
+func (f *Fetcher) repoPath(opts GitFetchOpts) (string, error) {
 	var s strings.Builder
 	if opts.Repo == "" {
 		return "", kerrors.WithKind(nil, repofetcher.ErrorInvalidRepoSpec, "No repo specified")
@@ -99,7 +99,7 @@ func (f *Fetcher) checkRepoDir(repodir string) (bool, error) {
 }
 
 func (f *Fetcher) Fetch(ctx context.Context, opts map[string]any) (fs.FS, error) {
-	var fetchOpts gitFetchOpts
+	var fetchOpts GitFetchOpts
 	if err := mapstructure.Decode(opts, &fetchOpts); err != nil {
 		return nil, kerrors.WithMsg(err, "Invalid opts")
 	}
@@ -123,7 +123,7 @@ func (f *Fetcher) Fetch(ctx context.Context, opts map[string]any) (fs.FS, error)
 				return nil, kerrors.WithMsg(err, fmt.Sprintf("Failed to clean existing dir: %s", repodir))
 			}
 		}
-		if err := f.gitClone(ctx, repodir, fetchOpts); err != nil {
+		if err := f.GitCmd.GitClone(ctx, repodir, fetchOpts); err != nil {
 			return nil, err
 		}
 	}
@@ -147,7 +147,25 @@ func (f *Fetcher) Fetch(ctx context.Context, opts map[string]any) (fs.FS, error)
 	return rfsys, nil
 }
 
-func (f *Fetcher) gitClone(ctx context.Context, repodir string, opts gitFetchOpts) error {
+type (
+	GitBin struct {
+		cacheDir string
+		Bin      string
+		Stdout   io.Writer
+		Stderr   io.Writer
+	}
+)
+
+func NewGitBin(cacheDir string) *GitBin {
+	return &GitBin{
+		cacheDir: cacheDir,
+		Bin:      "git",
+		Stdout:   os.Stdout,
+		Stderr:   os.Stderr,
+	}
+}
+
+func (g *GitBin) GitClone(ctx context.Context, repodir string, opts GitFetchOpts) error {
 	args := make([]string, 0, 8)
 	args = append(args, "clone", "--single-branch")
 	if opts.Commit != "" {
@@ -159,16 +177,16 @@ func (f *Fetcher) gitClone(ctx context.Context, repodir string, opts gitFetchOpt
 		args = append(args, "--branch", opts.Tag, "--depth", "1")
 	}
 	args = append(args, opts.Repo, repodir)
-	if err := f.runCmd(
-		exec.CommandContext(ctx, f.GitBin, args...),
-		f.cacheDir,
+	if err := g.runCmd(
+		exec.CommandContext(ctx, g.Bin, args...),
+		g.cacheDir,
 	); err != nil {
 		return kerrors.WithMsg(err, fmt.Sprintf("Failed to clone repo: %s", opts.Repo))
 	}
 	if opts.Commit != "" {
-		if err := f.runCmd(
-			exec.CommandContext(ctx, f.GitBin, "switch", "--detach", opts.Commit),
-			filepath.Join(f.cacheDir, repodir),
+		if err := g.runCmd(
+			exec.CommandContext(ctx, g.Bin, "switch", "--detach", opts.Commit),
+			filepath.Join(g.cacheDir, repodir),
 		); err != nil {
 			return kerrors.WithMsg(err, fmt.Sprintf("Failed to checkout commit: %s", opts.Commit))
 		}
@@ -176,11 +194,9 @@ func (f *Fetcher) gitClone(ctx context.Context, repodir string, opts gitFetchOpt
 	return nil
 }
 
-func (f *Fetcher) runCmd(cmd *exec.Cmd, dir string) error {
-	if f.Verbose {
-		cmd.Stdout = f.Stdout
-		cmd.Stderr = f.Stderr
-	}
+func (g *GitBin) runCmd(cmd *exec.Cmd, dir string) error {
+	cmd.Stdout = g.Stdout
+	cmd.Stderr = g.Stderr
 	cmd.Env = os.Environ()
 	if err := cmd.Run(); err != nil {
 		return err
