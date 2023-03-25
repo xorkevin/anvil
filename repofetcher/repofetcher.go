@@ -80,7 +80,6 @@ func merkelHash(
 	p string,
 	entry fs.DirEntry,
 	hasher merkelHasher,
-	filter func(p string, entry fs.DirEntry) (bool, error),
 ) (h2streamhash.Hash, error) {
 	hash, err := hasher.Hash()
 	if err != nil {
@@ -89,12 +88,6 @@ func merkelHash(
 
 	if entry.Type()&(^(fs.ModeSymlink & fs.ModeDir)) != 0 {
 		// entry is not a regular file, symlink, or dir
-		return nil, nil
-	}
-
-	if ok, err := filter(p, entry); err != nil {
-		return nil, err
-	} else if !ok {
 		return nil, nil
 	}
 
@@ -132,7 +125,7 @@ func merkelHash(
 		}
 		hasEntry := false
 		for _, i := range entries {
-			h, err := merkelHash(fsys, path.Join(p, i.Name()), i, hasher, filter)
+			h, err := merkelHash(fsys, path.Join(p, i.Name()), i, hasher)
 			if err != nil {
 				return false, err
 			}
@@ -171,13 +164,12 @@ func merkelHash(
 func merkelTreeHash(
 	fsys fs.FS,
 	hasher merkelHasher,
-	filter func(p string, entry fs.DirEntry) (bool, error),
 ) (h2streamhash.Hash, error) {
 	info, err := fs.Stat(fsys, ".")
 	if err != nil {
 		return nil, kerrors.WithMsg(err, "Failed to read dir")
 	}
-	h, err := merkelHash(fsys, ".", fs.FileInfoToDirEntry(info), hasher, filter)
+	h, err := merkelHash(fsys, ".", fs.FileInfoToDirEntry(info), hasher)
 	if err != nil {
 		return nil, err
 	}
@@ -193,9 +185,8 @@ func merkelTreeHash(
 func MerkelTreeHash(
 	fsys fs.FS,
 	hasher h2streamhash.Hasher,
-	filter func(p string, entry fs.DirEntry) (bool, error),
 ) (string, error) {
-	h, err := merkelTreeHash(fsys, hasher, filter)
+	h, err := merkelTreeHash(fsys, hasher)
 	if err != nil {
 		return "", err
 	}
@@ -216,10 +207,9 @@ func (v *verifierHasher) Hash() (h2streamhash.Hash, error) {
 func MerkelTreeVerify(
 	fsys fs.FS,
 	verifier *h2streamhash.Verifier,
-	filter func(p string, entry fs.DirEntry) (bool, error),
 	checksum string,
 ) (bool, error) {
-	h, err := merkelTreeHash(fsys, &verifierHasher{verifier: verifier, checksum: checksum}, filter)
+	h, err := merkelTreeHash(fsys, &verifierHasher{verifier: verifier, checksum: checksum})
 	if err != nil {
 		return false, err
 	}

@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"xorkevin.dev/anvil/repofetcher"
+	"xorkevin.dev/hunter2/h2streamhash"
 	"xorkevin.dev/hunter2/h2streamhash/blake2bstream"
 	"xorkevin.dev/kerrors"
 )
@@ -52,6 +53,8 @@ func Test_Fetcher(t *testing.T) {
 	tempCacheDir := t.TempDir()
 
 	hasher := blake2bstream.NewHasher(blake2bstream.Config{})
+	verifier := h2streamhash.NewVerifier()
+	verifier.Register(hasher)
 
 	t.Log("dir", tempCacheDir)
 
@@ -103,12 +106,7 @@ should be ignored
 			assert.Equal([]byte(i.data), data)
 		}
 
-		sum, err := repofetcher.MerkelTreeHash(fsys, hasher, func(p string, entry fs.DirEntry) (bool, error) {
-			if entry.IsDir() && entry.Name() == fetcher.GitDir {
-				return false, nil
-			}
-			return true, nil
-		})
+		sum, err := repofetcher.MerkelTreeHash(fsys, hasher)
 		assert.NoError(err)
 
 		repodir := "git%40example.com%3Aexample%2Frepo.git@test"
@@ -130,5 +128,9 @@ should be ignored
 			assert.NoError(err)
 			assert.Equal([]byte(i.data), data)
 		}
+
+		ok, err := repofetcher.MerkelTreeVerify(fsys, verifier, sum)
+		assert.NoError(err)
+		assert.True(ok)
 	})
 }

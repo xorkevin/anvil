@@ -15,6 +15,8 @@ import (
 
 	"github.com/mitchellh/mapstructure"
 	"xorkevin.dev/anvil/repofetcher"
+	"xorkevin.dev/anvil/util/lstatfs"
+	"xorkevin.dev/anvil/util/maskfs"
 	"xorkevin.dev/anvil/util/readlinkfs"
 	"xorkevin.dev/hunter2/h2streamhash"
 	"xorkevin.dev/hunter2/h2streamhash/blake2bstream"
@@ -129,20 +131,30 @@ func (f *Fetcher) Fetch(ctx context.Context, opts map[string]any) (fs.FS, error)
 	if err != nil {
 		return nil, kerrors.WithMsg(err, fmt.Sprintf("Failed to get directory: %s", repodir))
 	}
-	rfsys = readlinkfs.New(rfsys, path.Join(f.cacheDir, repodir))
+	repopath := path.Join(f.cacheDir, repodir)
+	rfsys = maskfs.New(
+		lstatfs.New(
+			readlinkfs.New(rfsys, repopath),
+			repopath,
+		),
+		"",
+		f.maskGitDir,
+	)
 	if fetchOpts.Checksum != "" {
-		if ok, err := repofetcher.MerkelTreeVerify(rfsys, f.verifier, func(p string, entry fs.DirEntry) (bool, error) {
-			if entry.IsDir() && entry.Name() == f.GitDir {
-				return false, nil
-			}
-			return true, nil
-		}, fetchOpts.Checksum); err != nil {
+		if ok, err := repofetcher.MerkelTreeVerify(rfsys, f.verifier, fetchOpts.Checksum); err != nil {
 			return nil, kerrors.WithMsg(err, "Failed computing repo checksum")
 		} else if !ok {
 			return nil, kerrors.WithMsg(nil, "Repo failed integrity check")
 		}
 	}
 	return rfsys, nil
+}
+
+func (f *Fetcher) maskGitDir(p string, entry fs.DirEntry) (bool, error) {
+	if entry.IsDir() && entry.Name() == f.GitDir {
+		return false, nil
+	}
+	return true, nil
 }
 
 type (
