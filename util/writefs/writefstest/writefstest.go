@@ -61,6 +61,7 @@ func (m *MapFS) Sub(dir string) (fs.FS, error) {
 		return nil, err
 	}
 	return &subdirFS{
+		m:    m,
 		fsys: fsys,
 		dir:  dir,
 	}, nil
@@ -140,6 +141,7 @@ func (m *MapFS) OpenFile(name string, flag int, mode fs.FileMode) (writefs.File,
 	return &mapFile{
 		info: mapFileInfo{
 			name: path.Base(name),
+			f:    f,
 		},
 		path: name,
 		r:    r,
@@ -150,6 +152,7 @@ func (m *MapFS) OpenFile(name string, flag int, mode fs.FileMode) (writefs.File,
 
 type (
 	subdirFS struct {
+		m    *MapFS
 		fsys fs.FS
 		dir  string
 	}
@@ -181,6 +184,7 @@ func (f *subdirFS) Sub(dir string) (fs.FS, error) {
 		return nil, err
 	}
 	return &subdirFS{
+		m:    f.m,
 		fsys: fsys,
 		dir:  path.Join(f.dir, dir),
 	}, nil
@@ -190,7 +194,7 @@ func (f *subdirFS) OpenFile(name string, flag int, mode fs.FileMode) (writefs.Fi
 	if !fs.ValidPath(name) {
 		return nil, &fs.PathError{Op: "openfile", Path: name, Err: fs.ErrInvalid}
 	}
-	return writefs.OpenFile(f.fsys, path.Join(f.dir, name), flag, mode)
+	return f.m.OpenFile(path.Join(f.dir, name), flag, mode)
 }
 
 type (

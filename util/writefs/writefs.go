@@ -38,7 +38,7 @@ type (
 func OpenFile(fsys fs.FS, name string, flag int, mode fs.FileMode) (File, error) {
 	rl, ok := fsys.(WriteFS)
 	if !ok {
-		return nil, &fs.PathError{Op: "lstat", Path: name, Err: ErrNotImplemented}
+		return nil, &fs.PathError{Op: "openfile", Path: name, Err: ErrNotImplemented}
 	}
 	return rl.OpenFile(name, flag, mode)
 }
