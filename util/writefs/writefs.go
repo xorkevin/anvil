@@ -43,6 +43,26 @@ func OpenFile(fsys fs.FS, name string, flag int, mode fs.FileMode) (File, error)
 	return rl.OpenFile(name, flag, mode)
 }
 
+// WriteFile writes a file
+//
+// If fsys does not implement WriteFS, then OpenFile returns an error.
+func WriteFile(fsys fs.FS, name string, data []byte, perm fs.FileMode) (retErr error) {
+	f, err := OpenFile(fsys, name, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, perm)
+	if err != nil {
+		return kerrors.WithMsg(err, "Failed opening file")
+	}
+	defer func() {
+		if err := f.Close(); err != nil {
+			retErr = errors.Join(retErr, kerrors.WithMsg(err, "Failed closing file"))
+		}
+	}()
+	_, err = f.Write(data)
+	if err != nil {
+		return kerrors.WithMsg(err, "Failed writing to file")
+	}
+	return nil
+}
+
 func (f *writeFS) Open(name string) (fs.File, error) {
 	return f.fsys.Open(name)
 }
