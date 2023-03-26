@@ -1,14 +1,11 @@
 package maskfs
 
 import (
-	"errors"
 	"io/fs"
 	"path"
 
 	"xorkevin.dev/anvil/util/lstatfs"
 )
-
-var ErrTargetMasked = errors.New("target masked")
 
 type (
 	FileFilter = func(p string, entry fs.DirEntry) (bool, error)
@@ -30,7 +27,7 @@ func (f *maskFS) checkFile(name string) error {
 		return err
 	}
 	if !ok {
-		return &fs.PathError{Op: "open", Path: name, Err: ErrTargetMasked}
+		return &fs.PathError{Op: "open", Path: name, Err: fs.ErrNotExist}
 	}
 	return nil
 }
@@ -81,6 +78,9 @@ func (f *maskFS) Glob(pattern string) ([]string, error) {
 }
 
 func (f *maskFS) Sub(dir string) (fs.FS, error) {
+	if err := f.checkFile(dir); err != nil {
+		return nil, err
+	}
 	fsys, err := fs.Sub(f.fsys, dir)
 	if err != nil {
 		return nil, err

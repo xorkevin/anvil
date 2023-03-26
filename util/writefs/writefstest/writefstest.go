@@ -2,19 +2,19 @@ package writefstest
 
 import (
 	"bytes"
-	"io"
 	"io/fs"
 	"os"
+	"path"
+	"testing/fstest"
+	"time"
+
+	"xorkevin.dev/anvil/util/writefs"
 )
 
 type (
-	// MapFS is an in memory [xorkevin.dev/governor/util/writefs.FS]
-	MapFS map[string]*MapFile
-
-	// MapFile is an in memory file
-	MapFile struct {
-		Data []byte
-		Mode fs.FileMode
+	// MapFS is an in memory [writefs.WriteFS]
+	MapFS struct {
+		Fsys fstest.MapFS
 	}
 )
 
@@ -35,109 +35,237 @@ func isReadWrite(flag int) (bool, bool) {
 	}
 }
 
-func (m MapFS) OpenFile(name string, flag int, mode fs.FileMode) (io.ReadWriteCloser, error) {
+func (m *MapFS) Open(name string) (fs.File, error) {
+	return m.Fsys.Open(name)
+}
+
+func (m *MapFS) Stat(name string) (fs.FileInfo, error) {
+	return fs.Stat(m.Fsys, name)
+}
+
+func (m *MapFS) ReadDir(name string) ([]fs.DirEntry, error) {
+	return fs.ReadDir(m.Fsys, name)
+}
+
+func (m *MapFS) ReadFile(name string) ([]byte, error) {
+	return fs.ReadFile(m.Fsys, name)
+}
+
+func (m *MapFS) Glob(pattern string) ([]string, error) {
+	return fs.Glob(m.Fsys, pattern)
+}
+
+func (m *MapFS) Sub(dir string) (fs.FS, error) {
+	fsys, err := fs.Sub(m.Fsys, dir)
+	if err != nil {
+		return nil, err
+	}
+	return &subdirFS{
+		fsys: fsys,
+		dir:  dir,
+	}, nil
+}
+
+func (m *MapFS) OpenFile(name string, flag int, mode fs.FileMode) (writefs.File, error) {
+	if !fs.ValidPath(name) {
+		return nil, &fs.PathError{Op: "openfile", Path: name, Err: fs.ErrInvalid}
+	}
+
 	isRead, isWrite := isReadWrite(flag)
+	if !isRead && !isWrite {
+		// must read or write
+		return nil, &fs.PathError{Op: "openfile", Path: name, Err: fs.ErrInvalid}
+	}
 	if isRead && isWrite {
 		// do not support both reading and writing for simplicity
-		return nil, fs.ErrInvalid
+		return nil, &fs.PathError{Op: "openfile", Path: name, Err: fs.ErrInvalid}
 	}
 
 	if flag&os.O_CREATE == 0 {
 		if !isWrite {
 			// disallow create when not writing
-			return nil, fs.ErrInvalid
+			return nil, &fs.PathError{Op: "openfile", Path: name, Err: fs.ErrInvalid}
 		}
 		if flag&os.O_EXCL != 0 {
 			// disallow using excl when create not specified
-			return nil, fs.ErrInvalid
+			return nil, &fs.PathError{Op: "openfile", Path: name, Err: fs.ErrInvalid}
 		}
 	}
 
-	f := m[name]
+	f := m.Fsys[name]
 	if f == nil {
 		if flag&os.O_CREATE == 0 {
-			return nil, fs.ErrNotExist
+			return nil, &fs.PathError{Op: "openfile", Path: name, Err: fs.ErrNotExist}
 		}
 
-		f = &MapFile{
-			Data: nil,
-			Mode: mode,
+		f = &fstest.MapFile{
+			Data:    nil,
+			Mode:    mode,
+			ModTime: time.Now(),
 		}
 	} else {
 		if flag&os.O_EXCL != 0 {
-			return nil, fs.ErrExist
+			return nil, &fs.PathError{Op: "openfile", Path: name, Err: fs.ErrExist}
 		}
 	}
 
-	data := f.Data
-	end := false
 	if flag&os.O_TRUNC != 0 {
 		if !isWrite {
 			// disallow using trunc when not writing
-			return nil, fs.ErrInvalid
+			return nil, &fs.PathError{Op: "openfile", Path: name, Err: fs.ErrInvalid}
 		}
-		data = nil
+		f.Data = nil
 	}
+	end := false
 	if flag&os.O_APPEND != 0 {
 		if !isWrite {
 			// disallow using append when not writing
-			return nil, fs.ErrInvalid
+			return nil, &fs.PathError{Op: "openfile", Path: name, Err: fs.ErrInvalid}
 		}
 		end = true
 	}
 
 	var r *bytes.Reader
 	if isRead {
-		r = bytes.NewReader(data)
+		r = bytes.NewReader(f.Data)
 	}
 	var b *bytes.Buffer
 	if isWrite {
 		b = &bytes.Buffer{}
 		if end {
-			b.Write(data)
+			b.Write(f.Data)
 		}
 	}
 
-	return &mapFileReadWriter{
+	return &mapFile{
+		info: mapFileInfo{
+			name: path.Base(name),
+		},
+		path: name,
 		r:    r,
 		b:    b,
-		mode: f.Mode,
-		name: name,
 		fsys: m,
 	}, nil
 }
 
 type (
-	mapFileReadWriter struct {
-		r    *bytes.Reader
-		b    *bytes.Buffer
-		mode fs.FileMode
-		name string
-		fsys MapFS
+	subdirFS struct {
+		fsys fs.FS
+		dir  string
 	}
 )
 
-func (w *mapFileReadWriter) Read(b []byte) (int, error) {
-	if w.r == nil {
-		return 0, fs.ErrInvalid
-	}
-	return w.r.Read(b)
+func (f *subdirFS) Open(name string) (fs.File, error) {
+	return f.fsys.Open(name)
 }
 
-func (w *mapFileReadWriter) Write(p []byte) (int, error) {
-	if w.b == nil {
-		return 0, fs.ErrInvalid
-	}
-	return w.b.Write(p)
+func (f *subdirFS) Stat(name string) (fs.FileInfo, error) {
+	return fs.Stat(f.fsys, name)
 }
 
-func (w *mapFileReadWriter) Close() error {
-	if w.b != nil {
-		w.fsys[w.name] = &MapFile{
-			Data: w.b.Bytes(),
-			Mode: w.mode,
+func (f *subdirFS) ReadDir(name string) ([]fs.DirEntry, error) {
+	return fs.ReadDir(f.fsys, name)
+}
+
+func (f *subdirFS) ReadFile(name string) ([]byte, error) {
+	return fs.ReadFile(f.fsys, name)
+}
+
+func (f *subdirFS) Glob(pattern string) ([]string, error) {
+	return fs.Glob(f.fsys, pattern)
+}
+
+func (f *subdirFS) Sub(dir string) (fs.FS, error) {
+	fsys, err := fs.Sub(f.fsys, dir)
+	if err != nil {
+		return nil, err
+	}
+	return &subdirFS{
+		fsys: fsys,
+		dir:  path.Join(f.dir, dir),
+	}, nil
+}
+
+func (f *subdirFS) OpenFile(name string, flag int, mode fs.FileMode) (writefs.File, error) {
+	if !fs.ValidPath(name) {
+		return nil, &fs.PathError{Op: "openfile", Path: name, Err: fs.ErrInvalid}
+	}
+	return writefs.OpenFile(f.fsys, path.Join(f.dir, name), flag, mode)
+}
+
+type (
+	mapFile struct {
+		info mapFileInfo
+		path string
+		r    *bytes.Reader
+		b    *bytes.Buffer
+		fsys *MapFS
+	}
+
+	mapFileInfo struct {
+		name string
+		f    *fstest.MapFile
+	}
+)
+
+func (f *mapFile) Stat() (fs.FileInfo, error) {
+	return &f.info, nil
+}
+
+func (f *mapFile) Read(p []byte) (int, error) {
+	if f.r == nil {
+		return 0, &fs.PathError{Op: "read", Path: f.path, Err: fs.ErrInvalid}
+	}
+	return f.r.Read(p)
+}
+
+func (f *mapFile) Write(p []byte) (int, error) {
+	if f.b == nil {
+		return 0, &fs.PathError{Op: "write", Path: f.path, Err: fs.ErrInvalid}
+	}
+	return f.b.Write(p)
+}
+
+func (f *mapFile) Close() error {
+	if f.b != nil {
+		f.fsys.Fsys[f.path] = &fstest.MapFile{
+			Data:    f.b.Bytes(),
+			Mode:    f.info.f.Mode,
+			ModTime: time.Now(),
 		}
-		w.b = nil
+		f.b = nil
 	}
 	return nil
+}
+
+func (i *mapFileInfo) Name() string {
+	return i.name
+}
+
+func (i *mapFileInfo) Size() int64 {
+	return int64(len(i.f.Data))
+}
+
+func (i *mapFileInfo) Mode() fs.FileMode {
+	return i.f.Mode
+}
+
+func (i *mapFileInfo) Type() fs.FileMode {
+	return i.f.Mode.Type()
+}
+
+func (i *mapFileInfo) ModTime() time.Time {
+	return i.f.ModTime
+}
+
+func (i *mapFileInfo) IsDir() bool {
+	return i.f.Mode&fs.ModeDir != 0
+}
+
+func (i *mapFileInfo) Sys() any {
+	return i.f.Sys
+}
+
+func (i *mapFileInfo) Info() (fs.FileInfo, error) {
+	return i, nil
 }
