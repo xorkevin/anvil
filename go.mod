@@ -11,7 +11,7 @@ require (
 	github.com/stretchr/testify v1.8.2
 	golang.org/x/mod v0.9.0
 	gopkg.in/yaml.v3 v3.0.1
-	xorkevin.dev/hunter2 v0.2.4
+	xorkevin.dev/hunter2 v0.2.5
 	xorkevin.dev/kerrors v0.1.5
 )
 
