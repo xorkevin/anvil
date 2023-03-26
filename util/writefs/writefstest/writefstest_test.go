@@ -119,7 +119,9 @@ func Test_MapFS(t *testing.T) {
 
 	{
 		assert.NoError(writefs.WriteFile(subFsys, "subother/subother.txt", []byte("subother"), 0x644))
-		b, err := fs.ReadFile(subFsys, "subother/subother.txt")
+		subsubFsys, err := fs.Sub(subFsys, "subother")
+		assert.NoError(err)
+		b, err := fs.ReadFile(subsubFsys, "subother.txt")
 		assert.NoError(err)
 		assert.Equal([]byte("subother"), b)
 	}
