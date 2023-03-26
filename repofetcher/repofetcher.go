@@ -2,10 +2,10 @@ package repofetcher
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
-	"log"
 	"path"
 
 	"xorkevin.dev/anvil/util/readlinkfs"
@@ -91,7 +91,7 @@ func merkelHash(
 		return nil, nil
 	}
 
-	notEmpty, err := func() (bool, error) {
+	notEmpty, err := func() (_ bool, retErr error) {
 		if entry.Type()&fs.ModeSymlink != 0 {
 			// symlink
 			dest, err := readlinkfs.ReadLink(fsys, p)
@@ -110,7 +110,7 @@ func merkelHash(
 			}
 			defer func() {
 				if err := f.Close(); err != nil {
-					log.Println(kerrors.WithMsg(err, "Failed to close open file"))
+					retErr = errors.Join(retErr, kerrors.WithMsg(err, "Failed to close open file"))
 				}
 			}()
 			if _, err := io.Copy(hash, f); err != nil {
