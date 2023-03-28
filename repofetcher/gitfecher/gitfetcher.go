@@ -146,7 +146,7 @@ func (f *Fetcher) Fetch(ctx context.Context, opts map[string]any) (fs.FS, error)
 		return nil, kerrors.WithMsg(err, fmt.Sprintf("Failed to get directory: %s", repodir))
 	}
 	repopath := path.Join(f.cacheDir, repodir)
-	rfsys = kfs.NewMaskFS(kfs.New(rfsys, repopath), f.maskGitDir)
+	rfsys = kfs.NewReadOnlyFS(kfs.NewMaskFS(kfs.New(rfsys, repopath), f.maskGitDir))
 	if fetchOpts.Checksum != "" {
 		if ok, err := repofetcher.MerkelTreeVerify(rfsys, f.verifier, fetchOpts.Checksum); err != nil {
 			return nil, kerrors.WithMsg(err, "Failed computing repo checksum")

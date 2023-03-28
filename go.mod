@@ -13,7 +13,7 @@ require (
 	gopkg.in/yaml.v3 v3.0.1
 	xorkevin.dev/hunter2 v0.2.5
 	xorkevin.dev/kerrors v0.1.5
-	xorkevin.dev/kfs v0.0.0-20230328072130-c999744de1dc
+	xorkevin.dev/kfs v0.0.0-20230328081229-ce9bca234ce1
 )
 
 require (
