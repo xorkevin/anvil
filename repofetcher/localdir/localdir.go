@@ -9,11 +9,10 @@ import (
 
 	"github.com/mitchellh/mapstructure"
 	"xorkevin.dev/anvil/repofetcher"
-	"xorkevin.dev/anvil/util/lstatfs"
-	"xorkevin.dev/anvil/util/readlinkfs"
 	"xorkevin.dev/hunter2/h2streamhash"
 	"xorkevin.dev/hunter2/h2streamhash/blake2bstream"
 	"xorkevin.dev/kerrors"
+	"xorkevin.dev/kfs"
 )
 
 type (
@@ -53,7 +52,7 @@ func (f *Fetcher) Fetch(ctx context.Context, opts map[string]any) (fs.FS, error)
 		return nil, kerrors.WithMsg(err, fmt.Sprintf("Failed to get directory: %s", fetchOpts.Dir))
 	}
 	repopath := path.Join(f.dir, fetchOpts.Dir)
-	rfsys = lstatfs.New(readlinkfs.New(rfsys, repopath), repopath)
+	rfsys = kfs.New(rfsys, repopath)
 	if fetchOpts.Checksum != "" {
 		if ok, err := repofetcher.MerkelTreeVerify(rfsys, f.verifier, fetchOpts.Checksum); err != nil {
 			return nil, kerrors.WithMsg(err, "Failed computing repo checksum")

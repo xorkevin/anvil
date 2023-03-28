@@ -16,9 +16,10 @@ import (
 
 type (
 	mockGitCmd struct {
-		dir   string
-		repo  string
-		files []mockGitFile
+		dir      string
+		repo     string
+		files    []mockGitFile
+		gitFiles []mockGitFile
 	}
 
 	mockGitFile struct {
@@ -32,6 +33,19 @@ func (m *mockGitCmd) GitClone(ctx context.Context, repodir string, opts GitFetch
 		return kerrors.WithMsg(nil, "Unknown repo")
 	}
 	for _, i := range m.files {
+		fullPath := filepath.Join(
+			filepath.FromSlash(m.dir),
+			filepath.FromSlash(repodir),
+			filepath.FromSlash(i.name),
+		)
+		if err := os.MkdirAll(filepath.Dir(fullPath), 0o777); err != nil {
+			return kerrors.WithMsg(err, "Failed creating dir")
+		}
+		if err := os.WriteFile(fullPath, []byte(i.data), 0o644); err != nil {
+			return kerrors.WithMsg(err, "Failed writing file")
+		}
+	}
+	for _, i := range m.gitFiles {
 		fullPath := filepath.Join(
 			filepath.FromSlash(m.dir),
 			filepath.FromSlash(repodir),
@@ -78,6 +92,8 @@ hello, world
 foobar
 `,
 			},
+		}
+		gitFiles := []mockGitFile{
 			{
 				name: ".git/ignorethis",
 				data: `
@@ -88,9 +104,10 @@ should be ignored
 
 		fetcher := New(tempCacheDir)
 		fetcher.GitCmd = &mockGitCmd{
-			dir:   tempCacheDir,
-			repo:  repo,
-			files: files,
+			dir:      tempCacheDir,
+			repo:     repo,
+			files:    files,
+			gitFiles: gitFiles,
 		}
 
 		fsys, err := fetcher.Fetch(context.Background(), map[string]any{

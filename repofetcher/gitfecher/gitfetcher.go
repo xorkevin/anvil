@@ -15,24 +15,23 @@ import (
 
 	"github.com/mitchellh/mapstructure"
 	"xorkevin.dev/anvil/repofetcher"
-	"xorkevin.dev/anvil/util/lstatfs"
-	"xorkevin.dev/anvil/util/maskfs"
-	"xorkevin.dev/anvil/util/readlinkfs"
 	"xorkevin.dev/hunter2/h2streamhash"
 	"xorkevin.dev/hunter2/h2streamhash/blake2bstream"
 	"xorkevin.dev/kerrors"
+	"xorkevin.dev/kfs"
 )
 
 type (
 	// Fetcher is a git repo fetcher
 	Fetcher struct {
-		fsys       fs.FS
-		cacheDir   string
-		verifier   *h2streamhash.Verifier
-		GitDir     string
-		GitCmd     GitCmd
-		NoNetwork  bool
-		ForceFetch bool
+		fsys         fs.FS
+		cacheDir     string
+		verifier     *h2streamhash.Verifier
+		gitDir       string
+		gitDirPrefix string
+		GitCmd       GitCmd
+		NoNetwork    bool
+		ForceFetch   bool
 	}
 
 	GitFetchOpts struct {
@@ -47,20 +46,35 @@ type (
 	GitCmd interface {
 		GitClone(ctx context.Context, repodir string, opts GitFetchOpts) error
 	}
+
+	// Opt is a constructor option
+	Opt = func(*Fetcher)
 )
 
 // New creates a new git [*Fetcher] which is rooted at a particular file system
-func New(cacheDir string) *Fetcher {
+func New(cacheDir string, opts ...Opt) *Fetcher {
 	v := h2streamhash.NewVerifier()
 	v.Register(blake2bstream.NewHasher(blake2bstream.Config{}))
-	return &Fetcher{
-		fsys:       os.DirFS(cacheDir),
-		cacheDir:   cacheDir,
-		verifier:   v,
-		GitDir:     ".git",
-		GitCmd:     NewGitBin(cacheDir),
-		NoNetwork:  false,
-		ForceFetch: false,
+	f := &Fetcher{
+		fsys:         os.DirFS(cacheDir),
+		cacheDir:     cacheDir,
+		verifier:     v,
+		gitDir:       ".git",
+		gitDirPrefix: ".git/",
+		GitCmd:       NewGitBin(cacheDir),
+		NoNetwork:    false,
+		ForceFetch:   false,
+	}
+	for _, i := range opts {
+		i(f)
+	}
+	return f
+}
+
+func OptGitDir(p string) Opt {
+	return func(f *Fetcher) {
+		f.gitDir = path.Clean(p)
+		f.gitDirPrefix = f.gitDir + "/"
 	}
 }
 
@@ -132,14 +146,7 @@ func (f *Fetcher) Fetch(ctx context.Context, opts map[string]any) (fs.FS, error)
 		return nil, kerrors.WithMsg(err, fmt.Sprintf("Failed to get directory: %s", repodir))
 	}
 	repopath := path.Join(f.cacheDir, repodir)
-	rfsys = maskfs.New(
-		lstatfs.New(
-			readlinkfs.New(rfsys, repopath),
-			repopath,
-		),
-		"",
-		f.maskGitDir,
-	)
+	rfsys = kfs.NewMaskFS(kfs.New(rfsys, repopath), f.maskGitDir)
 	if fetchOpts.Checksum != "" {
 		if ok, err := repofetcher.MerkelTreeVerify(rfsys, f.verifier, fetchOpts.Checksum); err != nil {
 			return nil, kerrors.WithMsg(err, "Failed computing repo checksum")
@@ -150,11 +157,8 @@ func (f *Fetcher) Fetch(ctx context.Context, opts map[string]any) (fs.FS, error)
 	return rfsys, nil
 }
 
-func (f *Fetcher) maskGitDir(p string, entry fs.DirEntry) (bool, error) {
-	if entry.IsDir() && entry.Name() == f.GitDir {
-		return false, nil
-	}
-	return true, nil
+func (f *Fetcher) maskGitDir(p string) (bool, error) {
+	return p != f.gitDir && !strings.HasPrefix(p, f.gitDirPrefix), nil
 }
 
 type (

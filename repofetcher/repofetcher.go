@@ -8,9 +8,9 @@ import (
 	"io/fs"
 	"path"
 
-	"xorkevin.dev/anvil/util/readlinkfs"
 	"xorkevin.dev/hunter2/h2streamhash"
 	"xorkevin.dev/kerrors"
+	"xorkevin.dev/kfs"
 )
 
 var (
@@ -94,7 +94,7 @@ func merkelHash(
 	notEmpty, err := func() (_ bool, retErr error) {
 		if entry.Type()&fs.ModeSymlink != 0 {
 			// symlink
-			dest, err := readlinkfs.ReadLink(fsys, p)
+			dest, err := kfs.ReadLink(fsys, p)
 			if err != nil {
 				return false, kerrors.WithMsg(err, fmt.Sprintf("Failed to read symlink: %s", p))
 			}
