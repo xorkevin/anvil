@@ -10,7 +10,7 @@ import (
 	"sort"
 	"text/template"
 
-	"xorkevin.dev/anvil/configfile"
+	"xorkevin.dev/anvil/confengine"
 	"xorkevin.dev/anvil/util/kjson"
 )
 
@@ -24,17 +24,6 @@ const (
 )
 
 type (
-	templateTpl struct {
-		tpl  *template.Template
-		mode fs.FileMode
-	}
-
-	// templateCache caches parsed templates by path
-	templateCache struct {
-		dir   fs.FS
-		cache map[string]templateTpl
-	}
-
 	// configData is the shape of the component config
 	configData struct {
 		Version   string                 `json:"version" yaml:"version"`
@@ -49,7 +38,7 @@ type (
 		Vars      map[string]interface{}
 		path      string
 		configTpl *template.Template
-		tplcache  *templateCache
+		tplcache  *engineCache
 	}
 
 	// configTplData is the input data of a config template
@@ -117,33 +106,6 @@ type (
 
 func (r RepoPath) String() string {
 	return fmt.Sprintf("[%s] %s (%s) %s", r.Kind, r.Repo, r.Ref, r.Path)
-}
-
-func newTemplateCache(dir fs.FS) *templateCache {
-	return &templateCache{
-		dir:   dir,
-		cache: map[string]templateTpl{},
-	}
-}
-
-func (c *templateCache) Parse(path string) (*templateTpl, error) {
-	if t, ok := c.cache[path]; ok {
-		return &t, nil
-	}
-	info, err := fs.Stat(c.dir, path)
-	if err != nil {
-		return nil, fmt.Errorf("Invalid template %s: %w", path, err)
-	}
-	tpl, err := template.New(filepath.Base(path)).ParseFS(c.dir, path)
-	if err != nil {
-		return nil, fmt.Errorf("Invalid template %s: %w", path, err)
-	}
-	t := templateTpl{
-		tpl:  tpl,
-		mode: info.Mode().Perm(),
-	}
-	c.cache[path] = t
-	return &t, nil
 }
 
 // ParseConfigFile parses a config file in a filesystem

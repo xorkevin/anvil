@@ -81,7 +81,7 @@ func OptGitDir(p string) Opt {
 func (f *Fetcher) repoPath(opts GitFetchOpts) (string, error) {
 	var s strings.Builder
 	if opts.Repo == "" {
-		return "", kerrors.WithKind(nil, repofetcher.ErrorInvalidRepoSpec, "No repo specified")
+		return "", kerrors.WithKind(nil, repofetcher.ErrInvalidRepoSpec, "No repo specified")
 	}
 	s.WriteString(url.QueryEscape(opts.Repo))
 	s.WriteString("@")
@@ -89,13 +89,13 @@ func (f *Fetcher) repoPath(opts GitFetchOpts) (string, error) {
 		s.WriteString(url.QueryEscape(opts.Tag))
 	} else if opts.Commit != "" {
 		if opts.Branch == "" {
-			return "", kerrors.WithKind(nil, repofetcher.ErrorInvalidRepoSpec, "Branch missing for commit")
+			return "", kerrors.WithKind(nil, repofetcher.ErrInvalidRepoSpec, "Branch missing for commit")
 		}
 		s.WriteString(url.QueryEscape(opts.Branch))
 		s.WriteString("-")
 		s.WriteString(url.QueryEscape(opts.Commit))
 	} else {
-		return "", kerrors.WithKind(nil, repofetcher.ErrorInvalidRepoSpec, "No repo tag or commit specified")
+		return "", kerrors.WithKind(nil, repofetcher.ErrInvalidRepoSpec, "No repo tag or commit specified")
 	}
 	return s.String(), nil
 }
@@ -107,7 +107,7 @@ func (f *Fetcher) checkRepoDir(repodir string) (bool, error) {
 	}
 	cloned := err == nil
 	if cloned && !info.IsDir() {
-		return false, kerrors.WithKind(nil, repofetcher.ErrorInvalidCache, fmt.Sprintf("Cached repo is not a directory: %s", repodir))
+		return false, kerrors.WithKind(nil, repofetcher.ErrInvalidCache, fmt.Sprintf("Cached repo is not a directory: %s", repodir))
 	}
 	return cloned, nil
 }
@@ -128,9 +128,9 @@ func (f *Fetcher) Fetch(ctx context.Context, opts map[string]any) (fs.FS, error)
 	if !cloned || f.ForceFetch {
 		if f.NoNetwork {
 			if f.ForceFetch {
-				return nil, kerrors.WithKind(nil, repofetcher.ErrorNetworkRequired, "May not force fetch without network")
+				return nil, kerrors.WithKind(nil, repofetcher.ErrNetworkRequired, "May not force fetch without network")
 			}
-			return nil, kerrors.WithKind(nil, repofetcher.ErrorNetworkRequired, fmt.Sprintf("Cached repo not present: %s", repodir))
+			return nil, kerrors.WithKind(nil, repofetcher.ErrNetworkRequired, fmt.Sprintf("Cached repo not present: %s", repodir))
 		}
 		if cloned {
 			if err := os.RemoveAll(filepath.Join(f.cacheDir, repodir)); err != nil {

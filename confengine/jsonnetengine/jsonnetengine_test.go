@@ -18,19 +18,20 @@ func Test_Engine(t *testing.T) {
 	var filemode fs.FileMode = 0o644
 
 	for _, tc := range []struct {
-		Name     string
-		Fsys     fs.FS
-		Std      string
-		Main     string
-		Args     map[string]any
-		Expected any
+		Name      string
+		Fsys      fs.FS
+		Opts      []Opt
+		Main      string
+		Args      map[string]any
+		RawString bool
+		Expected  any
 	}{
 		{
 			Name: "executes jsonnet",
 			Fsys: fstest.MapFS{
 				"config.jsonnet": &fstest.MapFile{
 					Data: []byte(`
-local anvil = import 'anvilstd.libsonnet';
+local anvil = import 'anvil.libsonnet';
 local args = anvil.envArgs();
 
 local world = import 'subdir/world.libsonnet';
@@ -79,7 +80,6 @@ local vars = import '/vars.libsonnet';
 					ModTime: now,
 				},
 			},
-			Std:  "anvilstd.libsonnet",
 			Main: "config.jsonnet",
 			Args: map[string]any{
 				"name": "world",
@@ -95,21 +95,41 @@ local vars = import '/vars.libsonnet';
 				},
 			},
 		},
+		{
+			Name: "outputs raw string",
+			Fsys: fstest.MapFS{
+				"config.jsonnet": &fstest.MapFile{
+					Data: []byte(`
+"hello, world"
+`),
+					Mode:    filemode,
+					ModTime: now,
+				},
+			},
+			Opts:      []Opt{OptStrOut(true)},
+			Main:      "config.jsonnet",
+			RawString: true,
+			Expected:  "hello, world\n",
+		},
 	} {
 		tc := tc
 		t.Run(tc.Name, func(t *testing.T) {
 			t.Parallel()
 			assert := require.New(t)
 
-			jeng := New(tc.Fsys, tc.Std, nil)
+			jeng := New(tc.Fsys, tc.Opts...)
 			{
 				var _ confengine.ConfEngine = jeng
 			}
 			outbytes, err := jeng.Exec(tc.Main, tc.Args)
 			assert.NoError(err)
-			var out any
-			assert.NoError(json.Unmarshal(outbytes, &out))
-			assert.Equal(tc.Expected, out)
+			if tc.RawString {
+				assert.Equal(tc.Expected, string(outbytes))
+			} else {
+				var out any
+				assert.NoError(json.Unmarshal(outbytes, &out))
+				assert.Equal(tc.Expected, out)
+			}
 		})
 	}
 }

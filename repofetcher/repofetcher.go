@@ -14,14 +14,14 @@ import (
 )
 
 var (
-	// ErrorUnknownKind is returned when the repo kind is not supported
-	ErrorUnknownKind errUnknownKind
-	// ErrorInvalidRepoSpec is returned when the repo spec is invalid
-	ErrorInvalidRepoSpec errInvalidRepoSpec
-	// ErrorInvalidCache is returned when the cached repo is invalid
-	ErrorInvalidCache errInvalidCache
-	// ErrorNetworkRequired is returned when the network is required to complete the operation
-	ErrorNetworkRequired errNetworkRequired
+	// ErrUnknownKind is returned when the repo kind is not supported
+	ErrUnknownKind errUnknownKind
+	// ErrInvalidRepoSpec is returned when the repo spec is invalid
+	ErrInvalidRepoSpec errInvalidRepoSpec
+	// ErrInvalidCache is returned when the cached repo is invalid
+	ErrInvalidCache errInvalidCache
+	// ErrNetworkRequired is returned when the network is required to complete the operation
+	ErrNetworkRequired errNetworkRequired
 )
 
 type (
@@ -60,7 +60,7 @@ type (
 func (m Map) Fetch(ctx context.Context, kind string, opts map[string]any) (fs.FS, error) {
 	f, ok := m[kind]
 	if !ok {
-		return nil, ErrorUnknownKind
+		return nil, ErrUnknownKind
 	}
 	fsys, err := f.Fetch(ctx, opts)
 	if err != nil {
