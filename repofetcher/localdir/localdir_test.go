@@ -1,4 +1,4 @@
-package gitfetcher
+package localdir
 
 import (
 	"context"
@@ -15,40 +15,17 @@ import (
 )
 
 type (
-	mockGitCmd struct {
-		dir      string
-		repo     string
-		files    []mockGitFile
-		gitFiles []mockGitFile
-	}
-
-	mockGitFile struct {
+	mockLocalFile struct {
 		name string
 		data string
 	}
 )
 
-func (m *mockGitCmd) GitClone(ctx context.Context, repodir string, opts GitFetchOpts) error {
-	if opts.Repo != m.repo {
-		return kerrors.WithMsg(nil, "Unknown repo")
-	}
-	for _, i := range m.files {
+func mockSetupDir(basedir string, dir string, files []mockLocalFile) error {
+	for _, i := range files {
 		fullPath := filepath.Join(
-			filepath.FromSlash(m.dir),
-			filepath.FromSlash(repodir),
-			filepath.FromSlash(i.name),
-		)
-		if err := os.MkdirAll(filepath.Dir(fullPath), 0o777); err != nil {
-			return kerrors.WithMsg(err, "Failed creating dir")
-		}
-		if err := os.WriteFile(fullPath, []byte(i.data), 0o644); err != nil {
-			return kerrors.WithMsg(err, "Failed writing file")
-		}
-	}
-	for _, i := range m.gitFiles {
-		fullPath := filepath.Join(
-			filepath.FromSlash(m.dir),
-			filepath.FromSlash(repodir),
+			filepath.FromSlash(basedir),
+			filepath.FromSlash(dir),
 			filepath.FromSlash(i.name),
 		)
 		if err := os.MkdirAll(filepath.Dir(fullPath), 0o777); err != nil {
@@ -70,14 +47,12 @@ func Test_Fetcher(t *testing.T) {
 	verifier := h2streamhash.NewVerifier()
 	verifier.Register(hasher)
 
-	t.Run("use cached git repo", func(t *testing.T) {
+	t.Run("use local dir", func(t *testing.T) {
 		t.Parallel()
 
 		assert := require.New(t)
 
-		repo := "git@example.com:example/repo.git"
-
-		files := []mockGitFile{
+		files := []mockLocalFile{
 			{
 				name: "foo.txt",
 				data: `
@@ -85,32 +60,18 @@ hello, world
 `,
 			},
 			{
-				name: "foo/bar.txt",
+				name: "foobar/bar.txt",
 				data: `
 foobar
 `,
 			},
 		}
-		gitFiles := []mockGitFile{
-			{
-				name: ".git/ignorethis",
-				data: `
-should be ignored
-`,
-			},
-		}
+		assert.NoError(mockSetupDir(tempCacheDir, "foo", files))
 
 		fetcher := New(tempCacheDir)
-		fetcher.GitCmd = &mockGitCmd{
-			dir:      tempCacheDir,
-			repo:     repo,
-			files:    files,
-			gitFiles: gitFiles,
-		}
 
 		fsys, err := fetcher.Fetch(context.Background(), map[string]any{
-			"repo": repo,
-			"tag":  "test",
+			"dir": "foo",
 		})
 		assert.NoError(err)
 		assert.NotNil(fsys)
@@ -124,15 +85,10 @@ should be ignored
 		sum, err := repofetcher.MerkelTreeHash(fsys, hasher)
 		assert.NoError(err)
 
-		repodir := "git%40example.com%3Aexample%2Frepo.git@test"
-		repoinfo, err := os.Stat(filepath.Join(tempCacheDir, repodir))
-		assert.NoError(err)
-		assert.True(repoinfo.IsDir())
-		assert.NoError(os.WriteFile(filepath.Join(tempCacheDir, repodir, ".git", "otherfile"), []byte("content"), 0o644))
+		assert.NoError(os.WriteFile(filepath.Join(tempCacheDir, "otherfile"), []byte("content"), 0o644))
 
 		fsys, err = fetcher.Fetch(context.Background(), map[string]any{
-			"repo":     repo,
-			"tag":      "test",
+			"dir":      "foo",
 			"checksum": sum,
 		})
 		assert.NoError(err)
