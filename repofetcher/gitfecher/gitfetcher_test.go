@@ -28,8 +28,8 @@ type (
 	}
 )
 
-func (m *mockGitCmd) GitClone(ctx context.Context, repodir string, opts GitFetchOpts) error {
-	if opts.Repo != m.repo {
+func (m *mockGitCmd) GitClone(ctx context.Context, repodir string, repospec RepoSpec) error {
+	if repospec.Repo != m.repo {
 		return kerrors.WithMsg(nil, "Unknown repo")
 	}
 	for _, i := range m.files {
@@ -108,9 +108,20 @@ should be ignored
 			gitFiles: gitFiles,
 		}
 
-		fsys, err := fetcher.Fetch(context.Background(), map[string]any{
-			"repo": repo,
-			"tag":  "test",
+		repodir := "git%40example.com%3Aexample%2Frepo.git@test"
+		repospec, err := fetcher.Build([]byte(`{"repo":"` + repo + `","tag":"test"}`))
+		assert.NoError(err)
+		assert.Equal(RepoSpec{
+			Repo: repo,
+			Tag:  "test",
+		}, repospec)
+		repospeckey, err := repospec.Key()
+		assert.NoError(err)
+		assert.Equal(repodir, repospeckey)
+
+		fsys, err := fetcher.Fetch(context.Background(), RepoSpec{
+			Repo: repo,
+			Tag:  "test",
 		})
 		assert.NoError(err)
 		assert.NotNil(fsys)
@@ -124,16 +135,14 @@ should be ignored
 		sum, err := repofetcher.MerkelTreeHash(fsys, hasher)
 		assert.NoError(err)
 
-		repodir := "git%40example.com%3Aexample%2Frepo.git@test"
 		repoinfo, err := os.Stat(filepath.Join(tempCacheDir, repodir))
 		assert.NoError(err)
 		assert.True(repoinfo.IsDir())
 		assert.NoError(os.WriteFile(filepath.Join(tempCacheDir, repodir, ".git", "otherfile"), []byte("content"), 0o644))
 
-		fsys, err = fetcher.Fetch(context.Background(), map[string]any{
-			"repo":     repo,
-			"tag":      "test",
-			"checksum": sum,
+		fsys, err = fetcher.Fetch(context.Background(), RepoSpec{
+			Repo: repo,
+			Tag:  "test",
 		})
 		assert.NoError(err)
 		assert.NotNil(fsys)

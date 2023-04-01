@@ -70,8 +70,17 @@ foobar
 
 		fetcher := New(tempCacheDir)
 
-		fsys, err := fetcher.Fetch(context.Background(), map[string]any{
-			"dir": "foo",
+		repospec, err := fetcher.Build([]byte(`{"dir":"foo"}`))
+		assert.NoError(err)
+		assert.Equal(RepoSpec{
+			Dir: "foo",
+		}, repospec)
+		repospeckey, err := repospec.Key()
+		assert.NoError(err)
+		assert.Equal("foo", repospeckey)
+
+		fsys, err := fetcher.Fetch(context.Background(), RepoSpec{
+			Dir: "foo",
 		})
 		assert.NoError(err)
 		assert.NotNil(fsys)
@@ -87,9 +96,8 @@ foobar
 
 		assert.NoError(os.WriteFile(filepath.Join(tempCacheDir, "otherfile"), []byte("content"), 0o644))
 
-		fsys, err = fetcher.Fetch(context.Background(), map[string]any{
-			"dir":      "foo",
-			"checksum": sum,
+		fsys, err = fetcher.Fetch(context.Background(), RepoSpec{
+			Dir: "foo",
 		})
 		assert.NoError(err)
 		assert.NotNil(fsys)

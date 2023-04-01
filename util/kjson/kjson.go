@@ -16,7 +16,7 @@ func Marshal(v any) ([]byte, error) {
 	return b.Bytes(), nil
 }
 
-// Unmarshal is [encoding/json.Unmarshal]
+// Unmarshal is [json.Unmarshal]
 func Unmarshal(data []byte, v any) error {
 	return json.Unmarshal(data, v)
 }

@@ -48,21 +48,51 @@ func (e errNetworkRequired) Error() string {
 }
 
 type (
+	// RepoSpec are repo specific options
+	RepoSpec interface {
+		Key() (string, error)
+	}
+
+	// Spec is a repo specification
+	Spec struct {
+		Kind string
+		Opts RepoSpec
+	}
+
 	// RepoFetcher fetches a repo with a particular kind
 	RepoFetcher interface {
-		Fetch(ctx context.Context, opts map[string]any) (fs.FS, error)
+		Build(optsbytes []byte) (RepoSpec, error)
+		Fetch(ctx context.Context, repoopts RepoSpec) (fs.FS, error)
 	}
 
 	// Map is a map from kinds to repo fetchers
 	Map map[string]RepoFetcher
 )
 
-func (m Map) Fetch(ctx context.Context, kind string, opts map[string]any) (fs.FS, error) {
+func (m Map) Build(ctx context.Context, kind string, optsbytes []byte) (*Spec, error) {
 	f, ok := m[kind]
 	if !ok {
 		return nil, ErrUnknownKind
 	}
-	fsys, err := f.Fetch(ctx, opts)
+	repoopts, err := f.Build(optsbytes)
+	if err != nil {
+		return nil, kerrors.WithMsg(err, "Failed to build repo spec")
+	}
+	if _, err := repoopts.Key(); err != nil {
+		return nil, kerrors.WithMsg(err, "Invalid repo opts")
+	}
+	return &Spec{
+		Kind: kind,
+		Opts: repoopts,
+	}, nil
+}
+
+func (m Map) Fetch(ctx context.Context, spec Spec) (fs.FS, error) {
+	f, ok := m[spec.Kind]
+	if !ok {
+		return nil, ErrUnknownKind
+	}
+	fsys, err := f.Fetch(ctx, spec.Opts)
 	if err != nil {
 		return nil, kerrors.WithMsg(err, "Failed to fetch repo")
 	}

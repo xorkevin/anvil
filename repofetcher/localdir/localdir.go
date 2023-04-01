@@ -7,8 +7,8 @@ import (
 	"os"
 	"path"
 
-	"github.com/mitchellh/mapstructure"
 	"xorkevin.dev/anvil/repofetcher"
+	"xorkevin.dev/anvil/util/kjson"
 	"xorkevin.dev/hunter2/h2streamhash"
 	"xorkevin.dev/hunter2/h2streamhash/blake2bstream"
 	"xorkevin.dev/kerrors"
@@ -24,9 +24,9 @@ type (
 		Verbose  bool
 	}
 
-	localDirOpts struct {
-		Dir      string `mapstructure:"dir"`
-		Checksum string `mapstructure:"checksum"`
+	// RepoSpec are local dir opts
+	RepoSpec struct {
+		Dir string `json:"dir"`
 	}
 )
 
@@ -42,23 +42,36 @@ func New(dir string) *Fetcher {
 	}
 }
 
-func (f *Fetcher) Fetch(ctx context.Context, opts map[string]any) (fs.FS, error) {
-	var fetchOpts localDirOpts
-	if err := mapstructure.Decode(opts, &fetchOpts); err != nil {
-		return nil, kerrors.WithMsg(err, "Invalid opts")
+func (o RepoSpec) Key() (string, error) {
+	cleaned := path.Clean(o.Dir)
+	if cleaned != o.Dir {
+		return "", kerrors.WithKind(nil, repofetcher.ErrInvalidRepoSpec, "Specified unsimplified dir")
 	}
-	rfsys, err := fs.Sub(f.fsys, fetchOpts.Dir)
+	return o.Dir, nil
+}
+
+func (f *Fetcher) Build(specbytes []byte) (repofetcher.RepoSpec, error) {
+	var repospec RepoSpec
+	if err := kjson.Unmarshal(specbytes, &repospec); err != nil {
+		return nil, kerrors.WithKind(err, repofetcher.ErrInvalidRepoSpec, "Failed to parse spec bytes")
+	}
+	repospec.Dir = path.Clean(repospec.Dir)
+	return repospec, nil
+}
+
+func (f *Fetcher) Fetch(ctx context.Context, spec repofetcher.RepoSpec) (fs.FS, error) {
+	repospec, ok := spec.(RepoSpec)
+	if !ok {
+		return nil, kerrors.WithKind(nil, repofetcher.ErrInvalidRepoSpec, "Invalid spec type")
+	}
+	dir, err := repospec.Key()
 	if err != nil {
-		return nil, kerrors.WithMsg(err, fmt.Sprintf("Failed to get directory: %s", fetchOpts.Dir))
+		return nil, err
 	}
-	repopath := path.Join(f.dir, fetchOpts.Dir)
-	rfsys = kfs.NewReadOnlyFS(kfs.New(rfsys, repopath))
-	if fetchOpts.Checksum != "" {
-		if ok, err := repofetcher.MerkelTreeVerify(rfsys, f.verifier, fetchOpts.Checksum); err != nil {
-			return nil, kerrors.WithMsg(err, "Failed computing repo checksum")
-		} else if !ok {
-			return nil, kerrors.WithMsg(nil, "Repo failed integrity check")
-		}
+	rfsys, err := fs.Sub(f.fsys, dir)
+	if err != nil {
+		return nil, kerrors.WithMsg(err, fmt.Sprintf("Failed to get directory: %s", dir))
 	}
-	return rfsys, nil
+	repopath := path.Join(f.dir, dir)
+	return kfs.NewReadOnlyFS(kfs.New(rfsys, repopath)), nil
 }

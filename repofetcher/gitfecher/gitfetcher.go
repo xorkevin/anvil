@@ -13,8 +13,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/mitchellh/mapstructure"
 	"xorkevin.dev/anvil/repofetcher"
+	"xorkevin.dev/anvil/util/kjson"
 	"xorkevin.dev/hunter2/h2streamhash"
 	"xorkevin.dev/hunter2/h2streamhash/blake2bstream"
 	"xorkevin.dev/kerrors"
@@ -34,17 +34,17 @@ type (
 		ForceFetch   bool
 	}
 
-	GitFetchOpts struct {
-		Repo         string `mapstructure:"repo"`
-		Tag          string `mapstructure:"tag"`
-		Branch       string `mapstructure:"branch"`
-		Commit       string `mapstructure:"commit"`
-		ShallowSince string `mapstructure:"shallow_since"`
-		Checksum     string `mapstructure:"checksum"`
+	// RepoSpec are git fetch opts
+	RepoSpec struct {
+		Repo         string `json:"repo"`
+		Tag          string `json:"tag"`
+		Branch       string `json:"branch"`
+		Commit       string `json:"commit"`
+		ShallowSince string `json:"shallow_since"`
 	}
 
 	GitCmd interface {
-		GitClone(ctx context.Context, repodir string, opts GitFetchOpts) error
+		GitClone(ctx context.Context, repodir string, repospec RepoSpec) error
 	}
 
 	// Opt is a constructor option
@@ -78,26 +78,34 @@ func OptGitDir(p string) Opt {
 	}
 }
 
-func (f *Fetcher) repoPath(opts GitFetchOpts) (string, error) {
+func (o RepoSpec) Key() (string, error) {
 	var s strings.Builder
-	if opts.Repo == "" {
+	if o.Repo == "" {
 		return "", kerrors.WithKind(nil, repofetcher.ErrInvalidRepoSpec, "No repo specified")
 	}
-	s.WriteString(url.QueryEscape(opts.Repo))
+	s.WriteString(url.QueryEscape(o.Repo))
 	s.WriteString("@")
-	if opts.Tag != "" {
-		s.WriteString(url.QueryEscape(opts.Tag))
-	} else if opts.Commit != "" {
-		if opts.Branch == "" {
+	if o.Tag != "" {
+		s.WriteString(url.QueryEscape(o.Tag))
+	} else if o.Commit != "" {
+		if o.Branch == "" {
 			return "", kerrors.WithKind(nil, repofetcher.ErrInvalidRepoSpec, "Branch missing for commit")
 		}
-		s.WriteString(url.QueryEscape(opts.Branch))
+		s.WriteString(url.QueryEscape(o.Branch))
 		s.WriteString("-")
-		s.WriteString(url.QueryEscape(opts.Commit))
+		s.WriteString(url.QueryEscape(o.Commit))
 	} else {
 		return "", kerrors.WithKind(nil, repofetcher.ErrInvalidRepoSpec, "No repo tag or commit specified")
 	}
 	return s.String(), nil
+}
+
+func (f *Fetcher) Build(specbytes []byte) (repofetcher.RepoSpec, error) {
+	var repospec RepoSpec
+	if err := kjson.Unmarshal(specbytes, &repospec); err != nil {
+		return nil, kerrors.WithKind(err, repofetcher.ErrInvalidRepoSpec, "Failed to parse spec bytes")
+	}
+	return repospec, nil
 }
 
 func (f *Fetcher) checkRepoDir(repodir string) (bool, error) {
@@ -112,12 +120,12 @@ func (f *Fetcher) checkRepoDir(repodir string) (bool, error) {
 	return cloned, nil
 }
 
-func (f *Fetcher) Fetch(ctx context.Context, opts map[string]any) (fs.FS, error) {
-	var fetchOpts GitFetchOpts
-	if err := mapstructure.Decode(opts, &fetchOpts); err != nil {
-		return nil, kerrors.WithMsg(err, "Invalid opts")
+func (f *Fetcher) Fetch(ctx context.Context, spec repofetcher.RepoSpec) (fs.FS, error) {
+	repospec, ok := spec.(RepoSpec)
+	if !ok {
+		return nil, kerrors.WithKind(nil, repofetcher.ErrInvalidRepoSpec, "Invalid spec type")
 	}
-	repodir, err := f.repoPath(fetchOpts)
+	repodir, err := repospec.Key()
 	if err != nil {
 		return nil, err
 	}
@@ -137,7 +145,7 @@ func (f *Fetcher) Fetch(ctx context.Context, opts map[string]any) (fs.FS, error)
 				return nil, kerrors.WithMsg(err, fmt.Sprintf("Failed to clean existing dir: %s", repodir))
 			}
 		}
-		if err := f.GitCmd.GitClone(ctx, repodir, fetchOpts); err != nil {
+		if err := f.GitCmd.GitClone(ctx, repodir, repospec); err != nil {
 			return nil, err
 		}
 	}
@@ -146,15 +154,7 @@ func (f *Fetcher) Fetch(ctx context.Context, opts map[string]any) (fs.FS, error)
 		return nil, kerrors.WithMsg(err, fmt.Sprintf("Failed to get directory: %s", repodir))
 	}
 	repopath := path.Join(f.cacheDir, repodir)
-	rfsys = kfs.NewReadOnlyFS(kfs.NewMaskFS(kfs.New(rfsys, repopath), f.maskGitDir))
-	if fetchOpts.Checksum != "" {
-		if ok, err := repofetcher.MerkelTreeVerify(rfsys, f.verifier, fetchOpts.Checksum); err != nil {
-			return nil, kerrors.WithMsg(err, "Failed computing repo checksum")
-		} else if !ok {
-			return nil, kerrors.WithMsg(nil, "Repo failed integrity check")
-		}
-	}
-	return rfsys, nil
+	return kfs.NewReadOnlyFS(kfs.NewMaskFS(kfs.New(rfsys, repopath), f.maskGitDir)), nil
 }
 
 func (f *Fetcher) maskGitDir(p string) (bool, error) {
@@ -181,30 +181,30 @@ func NewGitBin(cacheDir string) *GitBin {
 	}
 }
 
-func (g *GitBin) GitClone(ctx context.Context, repodir string, opts GitFetchOpts) error {
+func (g *GitBin) GitClone(ctx context.Context, repodir string, repospec RepoSpec) error {
 	args := make([]string, 0, 8)
 	args = append(args, "clone", "--single-branch")
-	if opts.Commit != "" {
-		args = append(args, "--branch", opts.Branch, "--no-checkout")
-		if opts.ShallowSince != "" {
-			args = append(args, "--shallow-since="+opts.ShallowSince)
+	if repospec.Commit != "" {
+		args = append(args, "--branch", repospec.Branch, "--no-checkout")
+		if repospec.ShallowSince != "" {
+			args = append(args, "--shallow-since="+repospec.ShallowSince)
 		}
 	} else {
-		args = append(args, "--branch", opts.Tag, "--depth", "1")
+		args = append(args, "--branch", repospec.Tag, "--depth", "1")
 	}
-	args = append(args, opts.Repo, repodir)
+	args = append(args, repospec.Repo, repodir)
 	if err := g.runCmd(
 		exec.CommandContext(ctx, g.Bin, args...),
 		g.cacheDir,
 	); err != nil {
-		return kerrors.WithMsg(err, fmt.Sprintf("Failed to clone repo: %s", opts.Repo))
+		return kerrors.WithMsg(err, fmt.Sprintf("Failed to clone repo: %s", repospec.Repo))
 	}
-	if opts.Commit != "" {
+	if repospec.Commit != "" {
 		if err := g.runCmd(
-			exec.CommandContext(ctx, g.Bin, "switch", "--detach", opts.Commit),
+			exec.CommandContext(ctx, g.Bin, "switch", "--detach", repospec.Commit),
 			filepath.Join(g.cacheDir, repodir),
 		); err != nil {
-			return kerrors.WithMsg(err, fmt.Sprintf("Failed to checkout commit: %s", opts.Commit))
+			return kerrors.WithMsg(err, fmt.Sprintf("Failed to checkout commit: %s", repospec.Commit))
 		}
 	}
 	return nil
