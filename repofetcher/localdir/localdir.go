@@ -43,9 +43,8 @@ func New(dir string) *Fetcher {
 }
 
 func (o RepoSpec) Key() (string, error) {
-	cleaned := path.Clean(o.Dir)
-	if cleaned != o.Dir {
-		return "", kerrors.WithKind(nil, repofetcher.ErrInvalidRepoSpec, "Specified unsimplified dir")
+	if !fs.ValidPath(o.Dir) {
+		return "", kerrors.WithKind(nil, repofetcher.ErrInvalidRepoSpec, "Invalid dir")
 	}
 	return o.Dir, nil
 }
@@ -55,7 +54,6 @@ func (f *Fetcher) Build(specbytes []byte) (repofetcher.RepoSpec, error) {
 	if err := kjson.Unmarshal(specbytes, &repospec); err != nil {
 		return nil, kerrors.WithKind(err, repofetcher.ErrInvalidRepoSpec, "Failed to parse spec bytes")
 	}
-	repospec.Dir = path.Clean(repospec.Dir)
 	return repospec, nil
 }
 
@@ -72,6 +70,5 @@ func (f *Fetcher) Fetch(ctx context.Context, spec repofetcher.RepoSpec) (fs.FS, 
 	if err != nil {
 		return nil, kerrors.WithMsg(err, fmt.Sprintf("Failed to get directory: %s", dir))
 	}
-	repopath := path.Join(f.dir, dir)
-	return kfs.NewReadOnlyFS(kfs.New(rfsys, repopath)), nil
+	return kfs.NewReadOnlyFS(kfs.New(rfsys, path.Join(f.dir, dir))), nil
 }
