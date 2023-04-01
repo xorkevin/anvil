@@ -55,8 +55,8 @@ type (
 
 	// Spec is a repo specification
 	Spec struct {
-		Kind string
-		Opts RepoSpec
+		Kind     string
+		RepoSpec RepoSpec
 	}
 
 	// RepoFetcher fetches a repo with a particular kind
@@ -69,7 +69,7 @@ type (
 	Map map[string]RepoFetcher
 )
 
-func (m Map) Build(ctx context.Context, kind string, optsbytes []byte) (*Spec, error) {
+func (m Map) Build(kind string, optsbytes []byte) (*Spec, error) {
 	f, ok := m[kind]
 	if !ok {
 		return nil, ErrUnknownKind
@@ -82,8 +82,8 @@ func (m Map) Build(ctx context.Context, kind string, optsbytes []byte) (*Spec, e
 		return nil, kerrors.WithMsg(err, "Invalid repo opts")
 	}
 	return &Spec{
-		Kind: kind,
-		Opts: repoopts,
+		Kind:     kind,
+		RepoSpec: repoopts,
 	}, nil
 }
 
@@ -92,7 +92,7 @@ func (m Map) Fetch(ctx context.Context, spec Spec) (fs.FS, error) {
 	if !ok {
 		return nil, ErrUnknownKind
 	}
-	fsys, err := f.Fetch(ctx, spec.Opts)
+	fsys, err := f.Fetch(ctx, spec.RepoSpec)
 	if err != nil {
 		return nil, kerrors.WithMsg(err, "Failed to fetch repo")
 	}
@@ -116,7 +116,7 @@ func merkelHash(
 		return nil, kerrors.WithMsg(err, "Failed to construct hash")
 	}
 
-	if entry.Type()&(^(fs.ModeSymlink & fs.ModeDir)) != 0 {
+	if entry.Type()&(^(fs.ModeSymlink | fs.ModeDir)) != 0 {
 		// entry is not a regular file, symlink, or dir
 		return nil, nil
 	}
