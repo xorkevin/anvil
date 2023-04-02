@@ -19,6 +19,7 @@ type (
 		fetchers  repofetcher.Map
 		engines   confengine.Map
 		cache     map[string]confengine.ConfEngine
+		local     map[string]struct{}
 		checksums map[string]string
 		hasher    h2streamhash.Hasher
 		verifier  *h2streamhash.Verifier
@@ -33,7 +34,7 @@ type (
 )
 
 // NewCache creates a new [*Cache]
-func NewCache(checksums map[string]string, fetchers repofetcher.Map, engines confengine.Map) *Cache {
+func NewCache(fetchers repofetcher.Map, engines confengine.Map, local map[string]struct{}, checksums map[string]string) *Cache {
 	hasher := blake2bstream.NewHasher(blake2bstream.Config{})
 	verifier := h2streamhash.NewVerifier()
 	verifier.Register(hasher)
@@ -42,6 +43,7 @@ func NewCache(checksums map[string]string, fetchers repofetcher.Map, engines con
 		fetchers:  fetchers,
 		engines:   engines,
 		cache:     map[string]confengine.ConfEngine{},
+		local:     local,
 		checksums: checksums,
 		hasher:    hasher,
 		verifier:  verifier,
@@ -69,6 +71,11 @@ func (c *Cache) cacheKey(kind string, repokey string) string {
 	return s.String()
 }
 
+func (c *Cache) isLocalRepo(repokind string) bool {
+	_, ok := c.local[repokind]
+	return ok
+}
+
 func (c *Cache) Get(ctx context.Context, kind string, spec repofetcher.Spec) (confengine.ConfEngine, error) {
 	speckey, err := spec.RepoSpec.Key()
 	if err != nil {
@@ -83,21 +90,23 @@ func (c *Cache) Get(ctx context.Context, kind string, spec repofetcher.Spec) (co
 	if err != nil {
 		return nil, kerrors.WithMsg(err, "Failed to fetch repo")
 	}
-	if sum, ok := c.checksums[repokey]; ok {
-		ok, err := repofetcher.MerkelTreeVerify(fsys, c.verifier, sum)
-		if err != nil {
-			return nil, kerrors.WithMsg(err, "Failed verifying repo checksum")
+	if !c.isLocalRepo(spec.Kind) {
+		if sum, ok := c.checksums[repokey]; ok {
+			ok, err := repofetcher.MerkelTreeVerify(fsys, c.verifier, sum)
+			if err != nil {
+				return nil, kerrors.WithMsg(err, "Failed verifying repo checksum")
+			}
+			if !ok {
+				return nil, kerrors.WithKind(nil, repofetcher.ErrInvalidCache, "Repo failed integrity check")
+			}
 		}
-		if !ok {
-			return nil, kerrors.WithKind(nil, repofetcher.ErrInvalidCache, "Repo failed integrity check")
+		if _, ok := c.sums[repokey]; !ok {
+			sum, err := repofetcher.MerkelTreeHash(fsys, c.hasher)
+			if err != nil {
+				return nil, kerrors.WithMsg(err, "Failed computing repo checksum")
+			}
+			c.sums[repokey] = sum
 		}
-	}
-	if _, ok := c.sums[repokey]; !ok {
-		sum, err := repofetcher.MerkelTreeHash(fsys, c.hasher)
-		if err != nil {
-			return nil, kerrors.WithMsg(err, "Failed computing repo checksum")
-		}
-		c.sums[repokey] = sum
 	}
 	eng, err := c.engines.Build(kind, fsys)
 	if err != nil {
