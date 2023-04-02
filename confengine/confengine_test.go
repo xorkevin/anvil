@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
+	"io/fs"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -53,9 +54,13 @@ func Test_ConfEngine(t *testing.T) {
 			assert := require.New(t)
 
 			engines := Map{
-				".mockengine": mockEngine{},
+				"mockengine": BuilderFunc(func(fsys fs.FS) (ConfEngine, error) {
+					return mockEngine{}, nil
+				}),
 			}
-			outbytes, err := engines.Exec(tc.Filename, tc.Args)
+			eng, err := engines.Build("mockengine", nil)
+			assert.NoError(err)
+			outbytes, err := eng.Exec(tc.Filename, tc.Args)
 			assert.NoError(err)
 			assert.True(bytes.HasPrefix(outbytes, []byte(tc.Filename+": ")))
 			outbytes = outbytes[len(tc.Filename)+2:]

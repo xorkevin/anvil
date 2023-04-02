@@ -109,7 +109,7 @@ should be ignored
 		}
 
 		repodir := "git%40example.com%3Aexample%2Frepo.git@test"
-		repospec, err := fetcher.Build([]byte(`{"repo":"` + repo + `","tag":"test"}`))
+		repospec, err := fetcher.Parse([]byte(`{"repo":"` + repo + `","tag":"test"}`))
 		assert.NoError(err)
 		assert.Equal(RepoSpec{
 			Repo: repo,

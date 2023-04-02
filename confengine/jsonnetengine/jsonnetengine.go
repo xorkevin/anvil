@@ -126,6 +126,16 @@ func OptNativeFuncs(fns []NativeFunc) Opt {
 	}
 }
 
+// NewJSON constructs a jsonnet engine that outputs json
+func NewJSON(fsys fs.FS) (confengine.ConfEngine, error) {
+	return New(fsys), nil
+}
+
+// NewStr constructs a jsonnet engine that outputs a raw string
+func NewStr(fsys fs.FS) (confengine.ConfEngine, error) {
+	return New(fsys, OptStrOut(true)), nil
+}
+
 func (e *Engine) getEnvArgs(args []any) (any, error) {
 	if len(args) != 0 {
 		return nil, kerrors.WithKind(nil, confengine.ErrInvalidArgs, "envArgs does not take arguments")

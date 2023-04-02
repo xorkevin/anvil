@@ -10,7 +10,6 @@ import (
 	"sort"
 	"text/template"
 
-	"xorkevin.dev/anvil/confengine"
 	"xorkevin.dev/anvil/util/kjson"
 )
 

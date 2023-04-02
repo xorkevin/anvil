@@ -100,7 +100,7 @@ func (o RepoSpec) Key() (string, error) {
 	return s.String(), nil
 }
 
-func (f *Fetcher) Build(specbytes []byte) (repofetcher.RepoSpec, error) {
+func (f *Fetcher) Parse(specbytes []byte) (repofetcher.RepoSpec, error) {
 	var repospec RepoSpec
 	if err := kjson.Unmarshal(specbytes, &repospec); err != nil {
 		return nil, kerrors.WithKind(err, repofetcher.ErrInvalidRepoSpec, "Failed to parse spec bytes")

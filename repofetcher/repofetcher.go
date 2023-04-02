@@ -59,31 +59,31 @@ type (
 		RepoSpec RepoSpec
 	}
 
-	// RepoFetcher fetches a repo with a particular kind
+	// RepoFetcher fetches a repo of a particular kind
 	RepoFetcher interface {
-		Build(optsbytes []byte) (RepoSpec, error)
-		Fetch(ctx context.Context, repoopts RepoSpec) (fs.FS, error)
+		Parse(repobytes []byte) (RepoSpec, error)
+		Fetch(ctx context.Context, repospec RepoSpec) (fs.FS, error)
 	}
 
 	// Map is a map from kinds to repo fetchers
 	Map map[string]RepoFetcher
 )
 
-func (m Map) Build(kind string, optsbytes []byte) (*Spec, error) {
+func (m Map) Parse(kind string, repobytes []byte) (Spec, error) {
 	f, ok := m[kind]
 	if !ok {
-		return nil, ErrUnknownKind
+		return Spec{}, ErrUnknownKind
 	}
-	repoopts, err := f.Build(optsbytes)
+	repospec, err := f.Parse(repobytes)
 	if err != nil {
-		return nil, kerrors.WithMsg(err, "Failed to build repo spec")
+		return Spec{}, kerrors.WithMsg(err, "Failed to build repo spec")
 	}
-	if _, err := repoopts.Key(); err != nil {
-		return nil, kerrors.WithMsg(err, "Invalid repo opts")
+	if _, err := repospec.Key(); err != nil {
+		return Spec{}, kerrors.WithMsg(err, "Invalid repo spec")
 	}
-	return &Spec{
+	return Spec{
 		Kind:     kind,
-		RepoSpec: repoopts,
+		RepoSpec: repospec,
 	}, nil
 }
 

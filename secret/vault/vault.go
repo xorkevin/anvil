@@ -13,17 +13,14 @@ import (
 	"strings"
 
 	vaultapi "github.com/hashicorp/vault/api"
-	"xorkevin.dev/anvil/configfile"
 )
 
 const (
 	roleKindKube = "kube"
 )
 
-var (
-	// ErrInvalidRoleKind is returned when attempting to parse a role with an invalid kind
-	ErrInvalidRoleKind = errors.New("Invalid role kind")
-)
+// ErrInvalidRoleKind is returned when attempting to parse a role with an invalid kind
+var ErrInvalidRoleKind = errors.New("Invalid role kind")
 
 type (
 	// VaultClient interacts with vault

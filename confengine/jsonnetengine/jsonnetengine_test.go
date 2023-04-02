@@ -20,7 +20,6 @@ func Test_Engine(t *testing.T) {
 	for _, tc := range []struct {
 		Name      string
 		Fsys      fs.FS
-		Opts      []Opt
 		Main      string
 		Args      map[string]any
 		RawString bool
@@ -106,7 +105,6 @@ local vars = import '/vars.libsonnet';
 					ModTime: now,
 				},
 			},
-			Opts:      []Opt{OptStrOut(true)},
 			Main:      "config.jsonnet",
 			RawString: true,
 			Expected:  "hello, world\n",
@@ -117,11 +115,17 @@ local vars = import '/vars.libsonnet';
 			t.Parallel()
 			assert := require.New(t)
 
-			jeng := New(tc.Fsys, tc.Opts...)
-			{
-				var _ confengine.ConfEngine = jeng
+			var eng confengine.ConfEngine
+			if tc.RawString {
+				var err error
+				eng, err = NewStr(tc.Fsys)
+				assert.NoError(err)
+			} else {
+				var err error
+				eng, err = NewJSON(tc.Fsys)
+				assert.NoError(err)
 			}
-			outbytes, err := jeng.Exec(tc.Main, tc.Args)
+			outbytes, err := eng.Exec(tc.Main, tc.Args)
 			assert.NoError(err)
 			if tc.RawString {
 				assert.Equal(tc.Expected, string(outbytes))

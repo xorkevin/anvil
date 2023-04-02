@@ -70,7 +70,7 @@ foobar
 
 		fetcher := New(tempCacheDir)
 
-		repospec, err := fetcher.Build([]byte(`{"dir":"foo"}`))
+		repospec, err := fetcher.Parse([]byte(`{"dir":"foo"}`))
 		assert.NoError(err)
 		assert.Equal(RepoSpec{
 			Dir: "foo",

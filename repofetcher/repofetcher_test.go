@@ -73,10 +73,9 @@ foobar
 			"local": localdir.New(tempCacheDir),
 		}
 
-		specp, err := m.Build("local", []byte(`{"dir":"foo"}`))
+		spec, err := m.Parse("local", []byte(`{"dir":"foo"}`))
 		assert.NoError(err)
-		assert.NotNil(specp)
-		spec := *specp
+		assert.NotNil(spec)
 		assert.Equal(repofetcher.Spec{
 			Kind: "local",
 			RepoSpec: localdir.RepoSpec{
