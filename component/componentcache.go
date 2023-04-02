@@ -53,21 +53,19 @@ func (c *Cache) Parse(kind string, repobytes []byte) (repofetcher.Spec, error) {
 	return c.fetchers.Parse(kind, repobytes)
 }
 
-func (c *Cache) repoKey(repokind string, key string) string {
+func (c *Cache) repoKey(repokind string, speckey string) string {
 	var s strings.Builder
 	s.WriteString(url.QueryEscape(repokind))
 	s.WriteString(":")
-	s.WriteString(key)
+	s.WriteString(speckey)
 	return s.String()
 }
 
-func (c *Cache) cacheKey(kind string, repokind string, key string) string {
+func (c *Cache) cacheKey(kind string, repokey string) string {
 	var s strings.Builder
 	s.WriteString(url.QueryEscape(kind))
 	s.WriteString(":")
-	s.WriteString(url.QueryEscape(repokind))
-	s.WriteString(":")
-	s.WriteString(key)
+	s.WriteString(repokey)
 	return s.String()
 }
 
@@ -76,15 +74,15 @@ func (c *Cache) Get(ctx context.Context, kind string, spec repofetcher.Spec) (co
 	if err != nil {
 		return nil, kerrors.WithMsg(err, "Failed to compute repo spec key")
 	}
-	key := c.cacheKey(kind, spec.Kind, speckey)
-	if eng, ok := c.cache[key]; ok {
+	repokey := c.repoKey(spec.Kind, speckey)
+	cachekey := c.cacheKey(kind, repokey)
+	if eng, ok := c.cache[cachekey]; ok {
 		return eng, nil
 	}
 	fsys, err := c.fetchers.Fetch(ctx, spec)
 	if err != nil {
 		return nil, kerrors.WithMsg(err, "Failed to fetch repo")
 	}
-	repokey := c.repoKey(spec.Kind, speckey)
 	if sum, ok := c.checksums[repokey]; ok {
 		ok, err := repofetcher.MerkelTreeVerify(fsys, c.verifier, sum)
 		if err != nil {
@@ -105,7 +103,7 @@ func (c *Cache) Get(ctx context.Context, kind string, spec repofetcher.Spec) (co
 	if err != nil {
 		return nil, kerrors.WithMsg(err, "Failed to build config engine")
 	}
-	c.cache[key] = eng
+	c.cache[cachekey] = eng
 	return eng, nil
 }
 
