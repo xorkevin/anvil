@@ -2,7 +2,10 @@ package component
 
 import (
 	"context"
+	"fmt"
+	"io/fs"
 	"net/url"
+	"path"
 	"sort"
 	"strings"
 
@@ -12,6 +15,17 @@ import (
 	"xorkevin.dev/hunter2/h2streamhash/blake2bstream"
 	"xorkevin.dev/kerrors"
 )
+
+// ErrInvalidDir is returned when the repo dir is invalid
+var ErrInvalidDir errInvalidDir
+
+type (
+	errInvalidDir struct{}
+)
+
+func (e errInvalidDir) Error() string {
+	return "Invalid repo dir"
+}
 
 type (
 	// Cache is a config engine cache by path
@@ -55,19 +69,25 @@ func (c *Cache) Parse(kind string, repobytes []byte) (repofetcher.Spec, error) {
 	return c.fetchers.Parse(kind, repobytes)
 }
 
-func (c *Cache) repoKey(repokind string, speckey string) string {
+func (c *Cache) repoKey(spec repofetcher.Spec) (string, error) {
+	speckey, err := spec.RepoSpec.Key()
+	if err != nil {
+		return "", kerrors.WithMsg(err, "Failed to compute repo spec key")
+	}
 	var s strings.Builder
-	s.WriteString(url.QueryEscape(repokind))
+	s.WriteString(url.QueryEscape(spec.Kind))
 	s.WriteString(":")
 	s.WriteString(speckey)
-	return s.String()
+	return s.String(), nil
 }
 
-func (c *Cache) cacheKey(kind string, repokey string) string {
+func (c *Cache) cacheKey(kind string, repokey string, dir string) string {
 	var s strings.Builder
 	s.WriteString(url.QueryEscape(kind))
 	s.WriteString(":")
 	s.WriteString(repokey)
+	s.WriteString(":")
+	s.WriteString(dir)
 	return s.String()
 }
 
@@ -76,13 +96,15 @@ func (c *Cache) isLocalRepo(repokind string) bool {
 	return ok
 }
 
-func (c *Cache) Get(ctx context.Context, kind string, spec repofetcher.Spec) (confengine.ConfEngine, error) {
-	speckey, err := spec.RepoSpec.Key()
-	if err != nil {
-		return nil, kerrors.WithMsg(err, "Failed to compute repo spec key")
+func (c *Cache) Get(ctx context.Context, kind string, spec repofetcher.Spec, dir string) (confengine.ConfEngine, error) {
+	if !fs.ValidPath(dir) {
+		return nil, kerrors.WithKind(nil, ErrInvalidDir, fmt.Sprintf("Invalid repo dir: %s", dir))
 	}
-	repokey := c.repoKey(spec.Kind, speckey)
-	cachekey := c.cacheKey(kind, repokey)
+	repokey, err := c.repoKey(spec)
+	if err != nil {
+		return nil, err
+	}
+	cachekey := c.cacheKey(kind, repokey, dir)
 	if eng, ok := c.cache[cachekey]; ok {
 		return eng, nil
 	}

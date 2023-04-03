@@ -15,8 +15,6 @@ import (
 
 	"xorkevin.dev/anvil/repofetcher"
 	"xorkevin.dev/anvil/util/kjson"
-	"xorkevin.dev/hunter2/h2streamhash"
-	"xorkevin.dev/hunter2/h2streamhash/blake2bstream"
 	"xorkevin.dev/kerrors"
 	"xorkevin.dev/kfs"
 )
@@ -26,7 +24,6 @@ type (
 	Fetcher struct {
 		fsys         fs.FS
 		cacheDir     string
-		verifier     *h2streamhash.Verifier
 		gitDir       string
 		gitDirPrefix string
 		GitCmd       GitCmd
@@ -53,12 +50,9 @@ type (
 
 // New creates a new git [*Fetcher] which is rooted at a particular file system
 func New(cacheDir string, opts ...Opt) *Fetcher {
-	v := h2streamhash.NewVerifier()
-	v.Register(blake2bstream.NewHasher(blake2bstream.Config{}))
 	f := &Fetcher{
-		fsys:         os.DirFS(cacheDir),
+		fsys:         os.DirFS(filepath.FromSlash(cacheDir)),
 		cacheDir:     cacheDir,
-		verifier:     v,
 		gitDir:       ".git",
 		gitDirPrefix: ".git/",
 		GitCmd:       NewGitBin(cacheDir),
@@ -133,6 +127,7 @@ func (f *Fetcher) Fetch(ctx context.Context, spec repofetcher.RepoSpec) (fs.FS, 
 	if err != nil {
 		return nil, err
 	}
+	repopath := path.Join(f.cacheDir, repodir)
 	if !cloned || f.ForceFetch {
 		if f.NoNetwork {
 			if f.ForceFetch {
@@ -141,7 +136,7 @@ func (f *Fetcher) Fetch(ctx context.Context, spec repofetcher.RepoSpec) (fs.FS, 
 			return nil, kerrors.WithKind(nil, repofetcher.ErrNetworkRequired, fmt.Sprintf("Cached repo not present: %s", repodir))
 		}
 		if cloned {
-			if err := os.RemoveAll(filepath.Join(f.cacheDir, repodir)); err != nil {
+			if err := os.RemoveAll(filepath.FromSlash(repopath)); err != nil {
 				return nil, kerrors.WithMsg(err, fmt.Sprintf("Failed to clean existing dir: %s", repodir))
 			}
 		}
@@ -153,7 +148,6 @@ func (f *Fetcher) Fetch(ctx context.Context, spec repofetcher.RepoSpec) (fs.FS, 
 	if err != nil {
 		return nil, kerrors.WithMsg(err, fmt.Sprintf("Failed to get directory: %s", repodir))
 	}
-	repopath := path.Join(f.cacheDir, repodir)
 	return kfs.NewReadOnlyFS(kfs.NewMaskFS(kfs.New(rfsys, repopath), f.maskGitDir)), nil
 }
 
@@ -195,14 +189,14 @@ func (g *GitBin) GitClone(ctx context.Context, repodir string, repospec RepoSpec
 	args = append(args, repospec.Repo, repodir)
 	if err := g.runCmd(
 		exec.CommandContext(ctx, g.Bin, args...),
-		g.cacheDir,
+		filepath.FromSlash(g.cacheDir),
 	); err != nil {
 		return kerrors.WithMsg(err, fmt.Sprintf("Failed to clone repo: %s", repospec.Repo))
 	}
 	if repospec.Commit != "" {
 		if err := g.runCmd(
 			exec.CommandContext(ctx, g.Bin, "switch", "--detach", repospec.Commit),
-			filepath.Join(g.cacheDir, repodir),
+			filepath.Join(filepath.FromSlash(g.cacheDir), repodir),
 		); err != nil {
 			return kerrors.WithMsg(err, fmt.Sprintf("Failed to checkout commit: %s", repospec.Commit))
 		}
@@ -211,11 +205,12 @@ func (g *GitBin) GitClone(ctx context.Context, repodir string, repospec RepoSpec
 }
 
 func (g *GitBin) runCmd(cmd *exec.Cmd, dir string) error {
+	cmd.Dir = dir
+	cmd.Env = os.Environ()
 	if !g.Quiet {
 		cmd.Stdout = g.Stdout
 		cmd.Stderr = g.Stderr
 	}
-	cmd.Env = os.Environ()
 	if err := cmd.Run(); err != nil {
 		return err
 	}

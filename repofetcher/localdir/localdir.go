@@ -2,15 +2,11 @@ package localdir
 
 import (
 	"context"
-	"fmt"
 	"io/fs"
 	"os"
-	"path"
+	"path/filepath"
 
 	"xorkevin.dev/anvil/repofetcher"
-	"xorkevin.dev/anvil/util/kjson"
-	"xorkevin.dev/hunter2/h2streamhash"
-	"xorkevin.dev/hunter2/h2streamhash/blake2bstream"
 	"xorkevin.dev/kerrors"
 	"xorkevin.dev/kfs"
 )
@@ -18,57 +14,31 @@ import (
 type (
 	// Fetcher is a local dir fetcher
 	Fetcher struct {
-		fsys     fs.FS
-		dir      string
-		verifier *h2streamhash.Verifier
-		Verbose  bool
+		fsys fs.FS
 	}
 
 	// RepoSpec are local dir opts
-	RepoSpec struct {
-		Dir string `json:"dir"`
-	}
+	RepoSpec struct{}
 )
 
 // New creates a new local dir [*Fetcher] which is rooted at a particular file system
 func New(dir string) *Fetcher {
-	v := h2streamhash.NewVerifier()
-	v.Register(blake2bstream.NewHasher(blake2bstream.Config{}))
 	return &Fetcher{
-		fsys:     os.DirFS(dir),
-		dir:      dir,
-		verifier: v,
-		Verbose:  false,
+		fsys: kfs.NewReadOnlyFS(kfs.New(os.DirFS(filepath.FromSlash(dir)), dir)),
 	}
 }
 
 func (o RepoSpec) Key() (string, error) {
-	if !fs.ValidPath(o.Dir) {
-		return "", kerrors.WithKind(nil, repofetcher.ErrInvalidRepoSpec, "Invalid dir")
-	}
-	return o.Dir, nil
+	return "localdir", nil
 }
 
 func (f *Fetcher) Parse(specbytes []byte) (repofetcher.RepoSpec, error) {
-	var repospec RepoSpec
-	if err := kjson.Unmarshal(specbytes, &repospec); err != nil {
-		return nil, kerrors.WithKind(err, repofetcher.ErrInvalidRepoSpec, "Failed to parse spec bytes")
-	}
-	return repospec, nil
+	return RepoSpec{}, nil
 }
 
 func (f *Fetcher) Fetch(ctx context.Context, spec repofetcher.RepoSpec) (fs.FS, error) {
-	repospec, ok := spec.(RepoSpec)
-	if !ok {
+	if _, ok := spec.(RepoSpec); !ok {
 		return nil, kerrors.WithKind(nil, repofetcher.ErrInvalidRepoSpec, "Invalid spec type")
 	}
-	dir, err := repospec.Key()
-	if err != nil {
-		return nil, err
-	}
-	rfsys, err := fs.Sub(f.fsys, dir)
-	if err != nil {
-		return nil, kerrors.WithMsg(err, fmt.Sprintf("Failed to get directory: %s", dir))
-	}
-	return kfs.NewReadOnlyFS(kfs.New(rfsys, path.Join(f.dir, dir))), nil
+	return f.fsys, nil
 }

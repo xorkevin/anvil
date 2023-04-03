@@ -4,6 +4,7 @@ import (
 	"context"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"testing"
 
@@ -68,20 +69,16 @@ foobar
 		}
 		assert.NoError(mockSetupDir(tempCacheDir, "foo", files))
 
-		fetcher := New(tempCacheDir)
+		fetcher := New(path.Join(filepath.ToSlash(tempCacheDir), "foo"))
 
 		repospec, err := fetcher.Parse([]byte(`{"dir":"foo"}`))
 		assert.NoError(err)
-		assert.Equal(RepoSpec{
-			Dir: "foo",
-		}, repospec)
+		assert.Equal(RepoSpec{}, repospec)
 		repospeckey, err := repospec.Key()
 		assert.NoError(err)
-		assert.Equal("foo", repospeckey)
+		assert.Equal("localdir", repospeckey)
 
-		fsys, err := fetcher.Fetch(context.Background(), RepoSpec{
-			Dir: "foo",
-		})
+		fsys, err := fetcher.Fetch(context.Background(), RepoSpec{})
 		assert.NoError(err)
 		assert.NotNil(fsys)
 
@@ -96,9 +93,7 @@ foobar
 
 		assert.NoError(os.WriteFile(filepath.Join(tempCacheDir, "otherfile"), []byte("content"), 0o644))
 
-		fsys, err = fetcher.Fetch(context.Background(), RepoSpec{
-			Dir: "foo",
-		})
+		fsys, err = fetcher.Fetch(context.Background(), RepoSpec{})
 		assert.NoError(err)
 		assert.NotNil(fsys)
 

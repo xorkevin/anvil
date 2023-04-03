@@ -2,10 +2,10 @@ package component
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"log"
-	"os"
 	"path/filepath"
 	"sort"
 	"text/template"
@@ -14,101 +14,39 @@ import (
 )
 
 const (
-	componentKindLocal = "local"
-	componentKindGit   = "git"
-)
-
-const (
-	generatedFileFlag = os.O_RDWR | os.O_CREATE
+	repoKindLocal    = "local"
+	repoKindLocalDir = "localdir"
+	repoKindGit      = "git"
 )
 
 type (
-	// configData is the shape of the component config
-	configData struct {
-		Version   string                 `json:"version" yaml:"version"`
-		Vars      map[string]interface{} `json:"vars" yaml:"vars"`
-		ConfigTpl string                 `json:"configtpl" yaml:"configtpl"`
-	}
-
-	// ConfigFile represents a parsed component config
-	ConfigFile struct {
-		Version   string
-		Name      string
-		Vars      map[string]interface{}
-		path      string
-		configTpl *template.Template
-		tplcache  *engineCache
-	}
-
-	// configTplData is the input data of a config template
-	configTplData struct {
-		Vars map[string]interface{}
+	// ConfigData is the shape of a generated config
+	ConfigData struct {
+		Version    string          `json:"version"`
+		Templates  []TemplateData  `json:"templates"`
+		Components []ComponentData `json:"components"`
 	}
 
 	// TemplateData is the shape of a generated config template
 	TemplateData struct {
-		Path   string `json:"path" yaml:"path"`
-		Output string `json:"output" yaml:"output"`
+		Kind   string `json:"kind"`
+		Path   string `json:"path"`
+		Output string `json:"output"`
 	}
 
-	// componentData is the shape of a generated config component
-	componentData struct {
-		Kind string                 `json:"kind" yaml:"kind"`
-		Repo string                 `json:"repo,omitempty" yaml:"repo,omitempty"`
-		Ref  string                 `json:"ref,omitempty" yaml:"ref,omitempty"`
-		Path string                 `json:"path" yaml:"path"`
-		Vars map[string]interface{} `json:"vars" yaml:"vars"`
-	}
-
-	// genConfigData is the shape of a generated config
-	genConfigData struct {
-		Templates  map[string]TemplateData  `json:"templates" yaml:"templates"`
-		Components map[string]componentData `json:"components" yaml:"components"`
-	}
-
-	// Template is a parsed template file
-	Template struct {
-		Tpl    *template.Template
-		Mode   fs.FileMode
-		Output string
-	}
-
-	// RepoPath represents a repo component path
-	RepoPath struct {
-		Kind string
-		Repo string
-		Ref  string
-		Path string
-	}
-
-	// Subcomponent is a parsed sub component
-	Subcomponent struct {
-		Src        RepoPath
-		Vars       map[string]interface{}
-		Templates  map[string]TemplateData
-		Components map[string]Patch
-	}
-
-	// Component is an instantiated component
-	Component struct {
-		Vars      map[string]interface{}
-		Templates map[string]Template
-	}
-
-	// Patch is the shape of a patch file
-	Patch struct {
-		Vars       map[string]interface{}  `json:"vars" yaml:"vars"`
-		Templates  map[string]TemplateData `json:"templates" yaml:"templates"`
-		Components map[string]Patch        `json:"components" yaml:"components"`
+	// ComponentData is the shape of a generated config component
+	ComponentData struct {
+		Kind     string          `json:"kind"`
+		RepoKind string          `json:"repokind"`
+		Repo     json.RawMessage `json:"repo"`
+		Dir      string          `json:"dir"`
+		Path     string          `json:"path"`
+		Args     map[string]any  `json:"args"`
 	}
 )
 
-func (r RepoPath) String() string {
-	return fmt.Sprintf("[%s] %s (%s) %s", r.Kind, r.Repo, r.Ref, r.Path)
-}
-
 // ParseConfigFile parses a config file in a filesystem
-func ParseConfigFile(fsys fs.FS, path string) (*ConfigFile, error) {
+func ParseConfigFile(fsys fs.FS, path string) (*ConfigData, error) {
 	dirpath := filepath.Dir(path)
 	dir, err := fs.Sub(fsys, dirpath)
 	if err != nil {
@@ -137,15 +75,6 @@ func ParseConfigFile(fsys fs.FS, path string) (*ConfigFile, error) {
 		configTpl: cfgtpl,
 		tplcache:  newTemplateCache(dir),
 	}, nil
-}
-
-// ParsePatchFile parses a patch file in a filesystem
-func ParsePatchFile(fsys fs.FS, path string) (*Patch, error) {
-	var patch Patch
-	if err := configfile.DecodeJSONorYAMLFile(fsys, path, &patch); err != nil {
-		return nil, fmt.Errorf("Invalid patch file %s: %w", path, err)
-	}
-	return &patch, nil
 }
 
 func mergeTemplates(tpls, patch map[string]TemplateData) map[string]TemplateData {
@@ -189,11 +118,7 @@ func mergeSubcomponents(components map[string]componentData, patch map[string]Pa
 }
 
 // Init initializes a component instance with variables
-func (c *ConfigFile) Init(patch *Patch) (*Component, []Subcomponent, error) {
-	if patch == nil {
-		patch = &Patch{}
-	}
-
+func (c *ConfigFile) Init() (*Component, []Subcomponent, error) {
 	vars := kjson.MergePatchObj(c.Vars, patch.Vars)
 
 	var gencfg genConfigData
