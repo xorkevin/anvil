@@ -83,13 +83,13 @@ func (o RepoSpec) Key() (string, error) {
 		s.WriteString(url.QueryEscape(o.Tag))
 	} else if o.Commit != "" {
 		if o.Branch == "" {
-			return "", kerrors.WithKind(nil, repofetcher.ErrInvalidRepoSpec, "Branch missing for commit")
+			return "", kerrors.WithKind(nil, repofetcher.ErrInvalidRepoSpec, fmt.Sprintf("Branch missing for commit for repo %s", o.Repo))
 		}
 		s.WriteString(url.QueryEscape(o.Branch))
 		s.WriteString("-")
 		s.WriteString(url.QueryEscape(o.Commit))
 	} else {
-		return "", kerrors.WithKind(nil, repofetcher.ErrInvalidRepoSpec, "No repo tag or commit specified")
+		return "", kerrors.WithKind(nil, repofetcher.ErrInvalidRepoSpec, fmt.Sprintf("No repo tag or commit specified for repo %s", o.Repo))
 	}
 	return s.String(), nil
 }
@@ -146,7 +146,7 @@ func (f *Fetcher) Fetch(ctx context.Context, spec repofetcher.RepoSpec) (fs.FS, 
 	}
 	rfsys, err := fs.Sub(f.fsys, repodir)
 	if err != nil {
-		return nil, kerrors.WithMsg(err, fmt.Sprintf("Failed to get directory: %s", repodir))
+		return nil, kerrors.WithMsg(err, fmt.Sprintf("Failed to get subdirectory: %s", repodir))
 	}
 	return kfs.NewReadOnlyFS(kfs.NewMaskFS(kfs.New(rfsys, repopath), f.maskGitDir)), nil
 }
@@ -198,7 +198,7 @@ func (g *GitBin) GitClone(ctx context.Context, repodir string, repospec RepoSpec
 			exec.CommandContext(ctx, g.Bin, "switch", "--detach", repospec.Commit),
 			filepath.Join(filepath.FromSlash(g.cacheDir), repodir),
 		); err != nil {
-			return kerrors.WithMsg(err, fmt.Sprintf("Failed to checkout commit: %s", repospec.Commit))
+			return kerrors.WithMsg(err, fmt.Sprintf("Failed to checkout commit %s for repo %s", repospec.Commit, repospec.Repo))
 		}
 	}
 	return nil

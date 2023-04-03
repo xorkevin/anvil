@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"net/url"
 	"path"
+	"strings"
 
 	"xorkevin.dev/hunter2/h2streamhash"
 	"xorkevin.dev/kerrors"
@@ -69,6 +71,18 @@ type (
 	Map map[string]RepoFetcher
 )
 
+func (s Spec) String() string {
+	speckey, err := s.RepoSpec.Key()
+	if err != nil {
+		speckey = "error"
+	}
+	var b strings.Builder
+	b.WriteString(url.QueryEscape(s.Kind))
+	b.WriteString(":")
+	b.WriteString(speckey)
+	return b.String()
+}
+
 func (m Map) Parse(kind string, repobytes []byte) (Spec, error) {
 	f, ok := m[kind]
 	if !ok {
@@ -76,10 +90,10 @@ func (m Map) Parse(kind string, repobytes []byte) (Spec, error) {
 	}
 	repospec, err := f.Parse(repobytes)
 	if err != nil {
-		return Spec{}, kerrors.WithMsg(err, "Failed to build repo spec")
+		return Spec{}, kerrors.WithMsg(err, fmt.Sprintf("Failed to build %s repo spec", kind))
 	}
 	if _, err := repospec.Key(); err != nil {
-		return Spec{}, kerrors.WithMsg(err, "Invalid repo spec")
+		return Spec{}, kerrors.WithMsg(err, fmt.Sprintf("Invalid %s repo spec", kind))
 	}
 	return Spec{
 		Kind:     kind,
@@ -94,7 +108,7 @@ func (m Map) Fetch(ctx context.Context, spec Spec) (fs.FS, error) {
 	}
 	fsys, err := f.Fetch(ctx, spec.RepoSpec)
 	if err != nil {
-		return nil, kerrors.WithMsg(err, "Failed to fetch repo")
+		return nil, kerrors.WithMsg(err, fmt.Sprintf("Failed to fetch %s repo", spec.Kind))
 	}
 	return fsys, nil
 }
@@ -126,7 +140,7 @@ func merkelHash(
 			// symlink
 			dest, err := kfs.ReadLink(fsys, p)
 			if err != nil {
-				return false, kerrors.WithMsg(err, fmt.Sprintf("Failed to read symlink: %s", p))
+				return false, kerrors.WithMsg(err, fmt.Sprintf("Failed to read symlink %s", p))
 			}
 			if _, err := io.WriteString(hash, dest); err != nil {
 				return false, kerrors.WithMsg(err, "Failed to write to hash")

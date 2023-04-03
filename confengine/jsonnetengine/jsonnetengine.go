@@ -145,6 +145,9 @@ func (e *Engine) getEnvArgs(args []any) (any, error) {
 
 // Exec implements [confengine.ConfEngine] and generates config using jsonnet
 func (e *Engine) Exec(name string, args map[string]any) ([]byte, error) {
+	if args == nil {
+		args = map[string]any{}
+	}
 	e.args = args
 	b, err := e.vm.EvaluateFile(name)
 	if err != nil {

@@ -1,26 +1,27 @@
 package component
 
 import (
-	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io/fs"
 	"log"
-	"path/filepath"
-	"sort"
-	"text/template"
+	"path"
 
+	"xorkevin.dev/anvil/repofetcher"
 	"xorkevin.dev/anvil/util/kjson"
+	"xorkevin.dev/kerrors"
 )
 
 const (
-	repoKindLocal    = "local"
 	repoKindLocalDir = "localdir"
 	repoKindGit      = "git"
+
+	configKindJsonnet = "jsonnet"
 )
 
 type (
-	// ConfigData is the shape of a generated config
+	// configData is the shape of a generated config
 	ConfigData struct {
 		Version    string          `json:"version"`
 		Templates  []TemplateData  `json:"templates"`
@@ -29,9 +30,10 @@ type (
 
 	// TemplateData is the shape of a generated config template
 	TemplateData struct {
-		Kind   string `json:"kind"`
-		Path   string `json:"path"`
-		Output string `json:"output"`
+		Kind   string         `json:"kind"`
+		Path   string         `json:"path"`
+		Args   map[string]any `json:"args"`
+		Output string         `json:"output"`
 	}
 
 	// ComponentData is the shape of a generated config component
@@ -39,139 +41,89 @@ type (
 		Kind     string          `json:"kind"`
 		RepoKind string          `json:"repokind"`
 		Repo     json.RawMessage `json:"repo"`
-		Dir      string          `json:"dir"`
 		Path     string          `json:"path"`
 		Args     map[string]any  `json:"args"`
 	}
+
+	// Component is a package of files to generate
+	Component struct {
+		Spec      repofetcher.Spec
+		Dir       string
+		Templates []TemplateData
+	}
 )
 
-// ParseConfigFile parses a config file in a filesystem
-func ParseConfigFile(fsys fs.FS, path string) (*ConfigData, error) {
-	dirpath := filepath.Dir(path)
-	dir, err := fs.Sub(fsys, dirpath)
+func parseConfigFile(ctx context.Context, cache *Cache, spec repofetcher.Spec, dir string, name string, args map[string]any) (*ConfigData, error) {
+	eng, err := cache.Get(ctx, configKindJsonnet, spec, dir)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to open dir %s: %w", dirpath, err)
+		return nil, err
 	}
-
-	var config configData
-	if err := configfile.DecodeJSONorYAMLFile(fsys, path, &config); err != nil {
-		return nil, fmt.Errorf("Invalid config %s: %w", path, err)
+	outbytes, err := eng.Exec(name, args)
+	if err != nil {
+		return nil, kerrors.WithMsg(err, fmt.Sprintf("Failed executing component config %s %s/%s", spec, dir, name))
 	}
+	config := &ConfigData{}
+	if err := kjson.Unmarshal(outbytes, config); err != nil {
+		return nil, kerrors.WithMsg(err, fmt.Sprintf("Invalid output for component config %s %s/%s", spec, dir, name))
+	}
+	return config, nil
+}
 
-	var cfgtpl *template.Template
-	if config.ConfigTpl != "" {
+func parseSubcomponent(ctx context.Context, cache *Cache, spec repofetcher.Spec, dir string, data ComponentData) ([]Component, error) {
+	var compspec repofetcher.Spec
+	var compname string
+	if data.RepoKind == "" {
+		if !fs.ValidPath(data.Path) {
+			return nil, kerrors.WithKind(nil, ErrInvalidDir, fmt.Sprintf("Invalid repo dir %s for local subcomponent", data.Path))
+		}
+		compspec = spec
+		compname = path.Join(dir, data.Path)
+	} else {
 		var err error
-		cfgtpl, err = template.New(config.ConfigTpl).ParseFS(dir, config.ConfigTpl)
+		compspec, err = cache.Parse(data.RepoKind, data.Repo)
 		if err != nil {
-			return nil, fmt.Errorf("Invalid config template %s %s: %w", dirpath, config.ConfigTpl, err)
+			return nil, kerrors.WithMsg(err, fmt.Sprintf("Invalid %s subcomponent", data.RepoKind))
 		}
+		if !fs.ValidPath(data.Path) {
+			return nil, kerrors.WithKind(nil, ErrInvalidDir, fmt.Sprintf("Invalid repo dir %s for subcomponent %s", data.Path, compspec))
+		}
+		compname = data.Path
 	}
-
-	return &ConfigFile{
-		Version:   config.Version,
-		Name:      dirpath,
-		Vars:      config.Vars,
-		path:      config.ConfigTpl,
-		configTpl: cfgtpl,
-		tplcache:  newTemplateCache(dir),
-	}, nil
+	c, err := ParseComponents(ctx, cache, compspec, compname, data.Args)
+	if err != nil {
+		return nil, kerrors.WithMsg(err, fmt.Sprintf("Failed parsing subcomponent %s %s", compspec, compname))
+	}
+	return c, nil
 }
 
-func mergeTemplates(tpls, patch map[string]TemplateData) map[string]TemplateData {
-	merged := map[string]TemplateData{}
-	for k, v := range tpls {
-		merged[k] = v
-	}
-	for k, v := range patch {
-		t := merged[k]
-		if v.Path != "" {
-			t.Path = v.Path
-		}
-		if v.Output != "" {
-			t.Output = v.Output
-		}
-		merged[k] = t
-	}
-	return merged
-}
+// ParseComponents parses components
+func ParseComponents(ctx context.Context, cache *Cache, spec repofetcher.Spec, name string, args map[string]any) ([]Component, error) {
+	dir, name := path.Split(name)
+	dir = path.Clean(dir)
+	name = path.Clean(name)
 
-func mergeSubcomponents(components map[string]componentData, patch map[string]Patch) map[string]Subcomponent {
-	merged := map[string]Subcomponent{}
-	for k, v := range components {
-		merged[k] = Subcomponent{
-			Src: RepoPath{
-				Kind: v.Kind,
-				Repo: v.Repo,
-				Ref:  v.Ref,
-				Path: v.Path,
-			},
-			Vars: v.Vars,
-		}
-	}
-	for k, v := range patch {
-		t := merged[k]
-		t.Vars = kjson.MergePatchObj(t.Vars, v.Vars)
-		t.Templates = v.Templates
-		t.Components = v.Components
-	}
-	return merged
-}
-
-// Init initializes a component instance with variables
-func (c *ConfigFile) Init() (*Component, []Subcomponent, error) {
-	vars := kjson.MergePatchObj(c.Vars, patch.Vars)
-
-	var gencfg genConfigData
-	if c.configTpl != nil {
-		b := &bytes.Buffer{}
-		data := configTplData{
-			Vars: vars,
-		}
-		if err := c.configTpl.Execute(b, data); err != nil {
-			return nil, nil, fmt.Errorf("Failed to generate config %s %s: %w", c.Name, c.path, err)
-		}
-		if err := configfile.DecodeJSONorYAML(b, filepath.Ext(c.path), &gencfg); err != nil {
-			return nil, nil, fmt.Errorf("Invalid generated config %s %s: %w", c.Name, c.path, err)
-		}
+	config, err := parseConfigFile(ctx, cache, spec, dir, name, args)
+	if err != nil {
+		return nil, err
 	}
 
-	tpls := map[string]Template{}
-	for k, v := range mergeTemplates(gencfg.Templates, patch.Templates) {
-		t, err := c.tplcache.Parse(v.Path)
+	// TODO: cycle detection on spec, dir, name
+
+	var components []Component
+	for _, i := range config.Components {
+		c, err := parseSubcomponent(ctx, cache, spec, dir, i)
 		if err != nil {
-			return nil, nil, err
+			return nil, kerrors.WithMsg(err, fmt.Sprintf("Failed parsing subcomponent of %s %s/%s", spec, dir, name))
 		}
-		tpls[k] = Template{
-			Tpl:    t.tpl,
-			Mode:   t.mode,
-			Output: v.Output,
-		}
+		components = append(components, c...)
 	}
 
-	components := mergeSubcomponents(gencfg.Components, patch.Components)
-	keys := make([]string, 0, len(components))
-	for k := range components {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	deps := make([]Subcomponent, 0, len(components))
-	for _, i := range keys {
-		deps = append(deps, components[i])
-	}
-
-	return &Component{
-		Vars:      vars,
-		Templates: tpls,
-	}, deps, nil
-}
-
-// Patch returns the subcomponent patch
-func (s *Subcomponent) Patch() *Patch {
-	return &Patch{
-		Vars:       s.Vars,
-		Templates:  s.Templates,
-		Components: s.Components,
-	}
+	components = append(components, Component{
+		Spec:      spec,
+		Dir:       dir,
+		Templates: config.Templates,
+	})
+	return components, nil
 }
 
 // Generate writes the generated templated files to a filesystem

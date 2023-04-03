@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io/fs"
 	"net/url"
-	"path"
 	"sort"
 	"strings"
 
@@ -66,7 +65,11 @@ func NewCache(fetchers repofetcher.Map, engines confengine.Map, local map[string
 }
 
 func (c *Cache) Parse(kind string, repobytes []byte) (repofetcher.Spec, error) {
-	return c.fetchers.Parse(kind, repobytes)
+	spec, err := c.fetchers.Parse(kind, repobytes)
+	if err != nil {
+		return repofetcher.Spec{}, kerrors.WithMsg(err, "Failed to parse repo spec")
+	}
+	return spec, nil
 }
 
 func (c *Cache) repoKey(spec repofetcher.Spec) (string, error) {
@@ -97,12 +100,12 @@ func (c *Cache) isLocalRepo(repokind string) bool {
 }
 
 func (c *Cache) Get(ctx context.Context, kind string, spec repofetcher.Spec, dir string) (confengine.ConfEngine, error) {
-	if !fs.ValidPath(dir) {
-		return nil, kerrors.WithKind(nil, ErrInvalidDir, fmt.Sprintf("Invalid repo dir: %s", dir))
-	}
 	repokey, err := c.repoKey(spec)
 	if err != nil {
 		return nil, err
+	}
+	if !fs.ValidPath(dir) {
+		return nil, kerrors.WithKind(nil, ErrInvalidDir, fmt.Sprintf("Invalid repo dir %s for repo %s", dir, repokey))
 	}
 	cachekey := c.cacheKey(kind, repokey, dir)
 	if eng, ok := c.cache[cachekey]; ok {
@@ -110,29 +113,33 @@ func (c *Cache) Get(ctx context.Context, kind string, spec repofetcher.Spec, dir
 	}
 	fsys, err := c.fetchers.Fetch(ctx, spec)
 	if err != nil {
-		return nil, kerrors.WithMsg(err, "Failed to fetch repo")
+		return nil, kerrors.WithMsg(err, fmt.Sprintf("Failed to fetch repo for repo: %s", repokey))
 	}
 	if !c.isLocalRepo(spec.Kind) {
 		if sum, ok := c.checksums[repokey]; ok {
 			ok, err := repofetcher.MerkelTreeVerify(fsys, c.verifier, sum)
 			if err != nil {
-				return nil, kerrors.WithMsg(err, "Failed verifying repo checksum")
+				return nil, kerrors.WithMsg(err, fmt.Sprintf("Failed verifying checksum for repo: %s", repokey))
 			}
 			if !ok {
-				return nil, kerrors.WithKind(nil, repofetcher.ErrInvalidCache, "Repo failed integrity check")
+				return nil, kerrors.WithKind(nil, repofetcher.ErrInvalidCache, fmt.Sprintf("Failed integrity check for repo: %s", repokey))
 			}
 		}
 		if _, ok := c.sums[repokey]; !ok {
 			sum, err := repofetcher.MerkelTreeHash(fsys, c.hasher)
 			if err != nil {
-				return nil, kerrors.WithMsg(err, "Failed computing repo checksum")
+				return nil, kerrors.WithMsg(err, fmt.Sprintf("Failed computing checksum for repo: %s", repokey))
 			}
 			c.sums[repokey] = sum
 		}
 	}
+	fsys, err = fs.Sub(fsys, dir)
+	if err != nil {
+		return nil, kerrors.WithMsg(err, fmt.Sprintf("Failed to get subdirectory %s for repo %s", dir, repokey))
+	}
 	eng, err := c.engines.Build(kind, fsys)
 	if err != nil {
-		return nil, kerrors.WithMsg(err, "Failed to build config engine")
+		return nil, kerrors.WithMsg(err, fmt.Sprintf("Failed to build %s config engine for repo %s at dir %s", kind, repokey, dir))
 	}
 	c.cache[cachekey] = eng
 	return eng, nil
