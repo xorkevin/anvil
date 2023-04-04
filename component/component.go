@@ -37,7 +37,7 @@ const (
 )
 
 type (
-	// configData is the shape of a generated config
+	// ConfigData is the shape of a generated config
 	ConfigData struct {
 		Version    string          `json:"version"`
 		Templates  []TemplateData  `json:"templates"`
@@ -201,6 +201,7 @@ type (
 		NoNetwork        bool
 		ForceFetch       bool
 		RepoChecksumFile string
+		JsonnetLibName   string
 	}
 
 	// RepoChecksumData is the shape of a repo checksum file
@@ -259,8 +260,8 @@ func Generate(ctx context.Context, output, local, cachedir, name string, opts Op
 			checksums,
 		),
 		confengine.Map{
-			configKindJsonnet: confengine.BuilderFunc(jsonnetengine.NewJSON),
-			"jsonnetstr":      confengine.BuilderFunc(jsonnetengine.NewStr),
+			configKindJsonnet: jsonnetengine.Builder{jsonnetengine.OptLibName(opts.JsonnetLibName)},
+			"jsonnetstr":      jsonnetengine.Builder{jsonnetengine.OptLibName(opts.JsonnetLibName), jsonnetengine.OptStrOut(true)},
 		},
 	)
 	components, err := ParseComponents(

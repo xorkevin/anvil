@@ -126,14 +126,12 @@ func OptNativeFuncs(fns []NativeFunc) Opt {
 	}
 }
 
-// NewJSON constructs a jsonnet engine that outputs json
-func NewJSON(fsys fs.FS) (confengine.ConfEngine, error) {
-	return New(fsys), nil
-}
+type (
+	Builder []Opt
+)
 
-// NewStr constructs a jsonnet engine that outputs a raw string
-func NewStr(fsys fs.FS) (confengine.ConfEngine, error) {
-	return New(fsys, OptStrOut(true)), nil
+func (b Builder) Build(fsys fs.FS) (confengine.ConfEngine, error) {
+	return New(fsys, b...), nil
 }
 
 func (e *Engine) getEnvArgs(args []any) (any, error) {

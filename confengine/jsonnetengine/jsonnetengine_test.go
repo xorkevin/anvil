@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"xorkevin.dev/anvil/confengine"
 )
 
 func Test_Engine(t *testing.T) {
@@ -115,16 +114,8 @@ local vars = import '/vars.libsonnet';
 			t.Parallel()
 			assert := require.New(t)
 
-			var eng confengine.ConfEngine
-			if tc.RawString {
-				var err error
-				eng, err = NewStr(tc.Fsys)
-				assert.NoError(err)
-			} else {
-				var err error
-				eng, err = NewJSON(tc.Fsys)
-				assert.NoError(err)
-			}
+			eng, err := Builder{OptStrOut(tc.RawString)}.Build(tc.Fsys)
+			assert.NoError(err)
 			outbytes, err := eng.Exec(tc.Main, tc.Args)
 			assert.NoError(err)
 			if tc.RawString {
