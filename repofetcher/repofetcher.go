@@ -8,9 +8,11 @@ import (
 	"io/fs"
 	"net/url"
 	"path"
+	"sort"
 	"strings"
 
 	"xorkevin.dev/hunter2/h2streamhash"
+	"xorkevin.dev/hunter2/h2streamhash/blake2bstream"
 	"xorkevin.dev/kerrors"
 	"xorkevin.dev/kfs"
 )
@@ -111,6 +113,114 @@ func (m Map) Fetch(ctx context.Context, spec Spec) (fs.FS, error) {
 		return nil, kerrors.WithMsg(err, fmt.Sprintf("Failed to fetch %s repo", spec.Kind))
 	}
 	return fsys, nil
+}
+
+type (
+	// Cache is a repo fetcher that caches results
+	Cache struct {
+		fetchers  Map
+		cache     map[string]fs.FS
+		local     map[string]struct{}
+		checksums map[string]string
+		hasher    h2streamhash.Hasher
+		verifier  *h2streamhash.Verifier
+		sums      map[string]string
+	}
+
+	// RepoChecksum is a checksum for a repo
+	RepoChecksum struct {
+		Key string `json:"key"`
+		Sum string `json:"sum"`
+	}
+)
+
+func NewCache(fetchers Map, local map[string]struct{}, checksums map[string]string) *Cache {
+	hasher := blake2bstream.NewHasher(blake2bstream.Config{})
+	verifier := h2streamhash.NewVerifier()
+	verifier.Register(hasher)
+	return &Cache{
+		fetchers:  fetchers,
+		local:     local,
+		checksums: checksums,
+		hasher:    hasher,
+		verifier:  verifier,
+		sums:      map[string]string{},
+	}
+}
+
+func (c *Cache) Parse(kind string, repobytes []byte) (Spec, error) {
+	spec, err := c.fetchers.Parse(kind, repobytes)
+	if err != nil {
+		return Spec{}, kerrors.WithMsg(err, "Failed to parse repo spec")
+	}
+	return spec, nil
+}
+
+func (c *Cache) repoKey(spec Spec) (string, error) {
+	speckey, err := spec.RepoSpec.Key()
+	if err != nil {
+		return "", kerrors.WithMsg(err, "Failed to compute repo spec key")
+	}
+	var s strings.Builder
+	s.WriteString(url.QueryEscape(spec.Kind))
+	s.WriteString(":")
+	s.WriteString(speckey)
+	return s.String(), nil
+}
+
+func (c *Cache) isLocalRepo(repokind string) bool {
+	_, ok := c.local[repokind]
+	return ok
+}
+
+func (c *Cache) Get(ctx context.Context, spec Spec) (fs.FS, error) {
+	repokey, err := c.repoKey(spec)
+	if err != nil {
+		return nil, err
+	}
+	if fsys, ok := c.cache[repokey]; ok {
+		return fsys, nil
+	}
+	fsys, err := c.fetchers.Fetch(ctx, spec)
+	if err != nil {
+		return nil, kerrors.WithMsg(err, fmt.Sprintf("Failed to fetch repo for repo: %s", repokey))
+	}
+	if !c.isLocalRepo(spec.Kind) {
+		if sum, ok := c.checksums[repokey]; ok {
+			ok, err := MerkelTreeVerify(fsys, c.verifier, sum)
+			if err != nil {
+				return nil, kerrors.WithMsg(err, fmt.Sprintf("Failed verifying checksum for repo: %s", repokey))
+			}
+			if !ok {
+				return nil, kerrors.WithKind(nil, ErrInvalidCache, fmt.Sprintf("Failed integrity check for repo: %s", repokey))
+			}
+		}
+		if _, ok := c.sums[repokey]; !ok {
+			sum, err := MerkelTreeHash(fsys, c.hasher)
+			if err != nil {
+				return nil, kerrors.WithMsg(err, fmt.Sprintf("Failed computing checksum for repo: %s", repokey))
+			}
+			c.sums[repokey] = sum
+		}
+	}
+	c.cache[repokey] = fsys
+	return fsys, nil
+}
+
+func (c *Cache) Sums() []RepoChecksum {
+	keys := make([]string, 0, len(c.sums))
+	for k := range c.sums {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	sums := make([]RepoChecksum, 0, len(keys))
+	for _, i := range keys {
+		sums = append(sums, RepoChecksum{
+			Key: i,
+			Sum: c.sums[i],
+		})
+	}
+	return sums
 }
 
 type (

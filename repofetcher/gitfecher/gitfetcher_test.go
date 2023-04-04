@@ -16,7 +16,6 @@ import (
 
 type (
 	mockGitCmd struct {
-		dir      string
 		repo     string
 		files    []mockGitFile
 		gitFiles []mockGitFile
@@ -28,13 +27,13 @@ type (
 	}
 )
 
-func (m *mockGitCmd) GitClone(ctx context.Context, repodir string, repospec RepoSpec) error {
+func (m *mockGitCmd) GitClone(ctx context.Context, workingDir string, repodir string, repospec RepoSpec) error {
 	if repospec.Repo != m.repo {
 		return kerrors.WithMsg(nil, "Unknown repo")
 	}
 	for _, i := range m.files {
 		fullPath := filepath.Join(
-			filepath.FromSlash(m.dir),
+			filepath.FromSlash(workingDir),
 			filepath.FromSlash(repodir),
 			filepath.FromSlash(i.name),
 		)
@@ -47,7 +46,7 @@ func (m *mockGitCmd) GitClone(ctx context.Context, repodir string, repospec Repo
 	}
 	for _, i := range m.gitFiles {
 		fullPath := filepath.Join(
-			filepath.FromSlash(m.dir),
+			filepath.FromSlash(workingDir),
 			filepath.FromSlash(repodir),
 			filepath.FromSlash(i.name),
 		)
@@ -100,13 +99,11 @@ should be ignored
 			},
 		}
 
-		fetcher := New(tempCacheDir)
-		fetcher.GitCmd = &mockGitCmd{
-			dir:      tempCacheDir,
+		fetcher := New(tempCacheDir, OptGitCmd(&mockGitCmd{
 			repo:     repo,
 			files:    files,
 			gitFiles: gitFiles,
-		}
+		}))
 
 		repodir := "git%40example.com%3Aexample%2Frepo.git@test"
 		repospec, err := fetcher.Parse([]byte(`{"repo":"` + repo + `","tag":"test"}`))

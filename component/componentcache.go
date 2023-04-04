@@ -5,13 +5,10 @@ import (
 	"fmt"
 	"io/fs"
 	"net/url"
-	"sort"
 	"strings"
 
 	"xorkevin.dev/anvil/confengine"
 	"xorkevin.dev/anvil/repofetcher"
-	"xorkevin.dev/hunter2/h2streamhash"
-	"xorkevin.dev/hunter2/h2streamhash/blake2bstream"
 	"xorkevin.dev/kerrors"
 )
 
@@ -29,59 +26,27 @@ func (e errInvalidDir) Error() string {
 type (
 	// Cache is a config engine cache by path
 	Cache struct {
-		fetchers  repofetcher.Map
-		engines   confengine.Map
-		cache     map[string]confengine.ConfEngine
-		local     map[string]struct{}
-		checksums map[string]string
-		hasher    h2streamhash.Hasher
-		verifier  *h2streamhash.Verifier
-		sums      map[string]string
-	}
-
-	// RepoChecksum is a checksum for a repo
-	RepoChecksum struct {
-		Key string
-		Sum string
+		repos   *repofetcher.Cache
+		engines confengine.Map
+		cache   map[string]confengine.ConfEngine
 	}
 )
 
 // NewCache creates a new [*Cache]
-func NewCache(fetchers repofetcher.Map, engines confengine.Map, local map[string]struct{}, checksums map[string]string) *Cache {
-	hasher := blake2bstream.NewHasher(blake2bstream.Config{})
-	verifier := h2streamhash.NewVerifier()
-	verifier.Register(hasher)
-
+func NewCache(repos *repofetcher.Cache, engines confengine.Map) *Cache {
 	return &Cache{
-		fetchers:  fetchers,
-		engines:   engines,
-		cache:     map[string]confengine.ConfEngine{},
-		local:     local,
-		checksums: checksums,
-		hasher:    hasher,
-		verifier:  verifier,
-		sums:      map[string]string{},
+		repos:   repos,
+		engines: engines,
+		cache:   map[string]confengine.ConfEngine{},
 	}
 }
 
 func (c *Cache) Parse(kind string, repobytes []byte) (repofetcher.Spec, error) {
-	spec, err := c.fetchers.Parse(kind, repobytes)
+	spec, err := c.repos.Parse(kind, repobytes)
 	if err != nil {
 		return repofetcher.Spec{}, kerrors.WithMsg(err, "Failed to parse repo spec")
 	}
 	return spec, nil
-}
-
-func (c *Cache) repoKey(spec repofetcher.Spec) (string, error) {
-	speckey, err := spec.RepoSpec.Key()
-	if err != nil {
-		return "", kerrors.WithMsg(err, "Failed to compute repo spec key")
-	}
-	var s strings.Builder
-	s.WriteString(url.QueryEscape(spec.Kind))
-	s.WriteString(":")
-	s.WriteString(speckey)
-	return s.String(), nil
 }
 
 func (c *Cache) cacheKey(kind string, repokey string, dir string) string {
@@ -94,44 +59,18 @@ func (c *Cache) cacheKey(kind string, repokey string, dir string) string {
 	return s.String()
 }
 
-func (c *Cache) isLocalRepo(repokind string) bool {
-	_, ok := c.local[repokind]
-	return ok
-}
-
 func (c *Cache) Get(ctx context.Context, kind string, spec repofetcher.Spec, dir string) (confengine.ConfEngine, error) {
-	repokey, err := c.repoKey(spec)
+	fsys, err := c.repos.Get(ctx, spec)
 	if err != nil {
-		return nil, err
+		return nil, kerrors.WithMsg(err, "Failed to fetch repo")
 	}
+	repokey := spec.String()
 	if !fs.ValidPath(dir) {
 		return nil, kerrors.WithKind(nil, ErrInvalidDir, fmt.Sprintf("Invalid repo dir %s for repo %s", dir, repokey))
 	}
 	cachekey := c.cacheKey(kind, repokey, dir)
 	if eng, ok := c.cache[cachekey]; ok {
 		return eng, nil
-	}
-	fsys, err := c.fetchers.Fetch(ctx, spec)
-	if err != nil {
-		return nil, kerrors.WithMsg(err, fmt.Sprintf("Failed to fetch repo for repo: %s", repokey))
-	}
-	if !c.isLocalRepo(spec.Kind) {
-		if sum, ok := c.checksums[repokey]; ok {
-			ok, err := repofetcher.MerkelTreeVerify(fsys, c.verifier, sum)
-			if err != nil {
-				return nil, kerrors.WithMsg(err, fmt.Sprintf("Failed verifying checksum for repo: %s", repokey))
-			}
-			if !ok {
-				return nil, kerrors.WithKind(nil, repofetcher.ErrInvalidCache, fmt.Sprintf("Failed integrity check for repo: %s", repokey))
-			}
-		}
-		if _, ok := c.sums[repokey]; !ok {
-			sum, err := repofetcher.MerkelTreeHash(fsys, c.hasher)
-			if err != nil {
-				return nil, kerrors.WithMsg(err, fmt.Sprintf("Failed computing checksum for repo: %s", repokey))
-			}
-			c.sums[repokey] = sum
-		}
 	}
 	fsys, err = fs.Sub(fsys, dir)
 	if err != nil {
@@ -145,18 +84,36 @@ func (c *Cache) Get(ctx context.Context, kind string, spec repofetcher.Spec, dir
 	return eng, nil
 }
 
-func (c *Cache) Sums() []RepoChecksum {
-	keys := make([]string, 0, len(c.sums))
-	for k := range c.sums {
-		keys = append(keys, k)
+type (
+	stackSet struct {
+		set   map[string]struct{}
+		stack []string
 	}
-	sort.Strings(keys)
-	sums := make([]RepoChecksum, 0, len(keys))
-	for _, i := range keys {
-		sums = append(sums, RepoChecksum{
-			Key: i,
-			Sum: c.sums[i],
-		})
+)
+
+func newStackSet() *stackSet {
+	return &stackSet{
+		set:   map[string]struct{}{},
+		stack: nil,
 	}
-	return sums
+}
+
+func (s *stackSet) Push(v string) bool {
+	if _, ok := s.set[v]; ok {
+		return false
+	}
+	s.set[v] = struct{}{}
+	s.stack = append(s.stack, v)
+	return true
+}
+
+func (s *stackSet) Pop() (string, bool) {
+	l := len(s.stack)
+	if l == 0 {
+		return "", false
+	}
+	v := s.stack[l-1]
+	s.stack = s.stack[:l-1]
+	delete(s.set, v)
+	return v, true
 }
