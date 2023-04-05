@@ -28,7 +28,7 @@ func (e mockEngine) Exec(name string, args map[string]any) ([]byte, error) {
 	return b.Bytes(), nil
 }
 
-func Test_ConfEngine(t *testing.T) {
+func TestConfEngine(t *testing.T) {
 	t.Parallel()
 
 	for _, tc := range []struct {

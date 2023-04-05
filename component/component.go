@@ -14,7 +14,7 @@ import (
 	"xorkevin.dev/anvil/confengine"
 	"xorkevin.dev/anvil/confengine/jsonnetengine"
 	"xorkevin.dev/anvil/repofetcher"
-	gitfetcher "xorkevin.dev/anvil/repofetcher/gitfecher"
+	"xorkevin.dev/anvil/repofetcher/gitfecher"
 	"xorkevin.dev/anvil/repofetcher/localdir"
 	"xorkevin.dev/anvil/util/kjson"
 	"xorkevin.dev/kerrors"
@@ -161,8 +161,8 @@ func parseComponentsRec(ctx context.Context, cache *Cache, ss *stackSet, spec re
 }
 
 // ParseComponents parses component configs to [Component]
-func ParseComponents(ctx context.Context, cache *Cache, spec repofetcher.Spec, name string, args map[string]any) ([]Component, error) {
-	return parseComponentsRec(ctx, cache, newStackSet(), spec, name, args)
+func ParseComponents(ctx context.Context, cache *Cache, spec repofetcher.Spec, name string) ([]Component, error) {
+	return parseComponentsRec(ctx, cache, newStackSet(), spec, name, nil)
 }
 
 func writeComponent(ctx context.Context, cache *Cache, fsys fs.FS, component Component) error {
@@ -269,7 +269,6 @@ func Generate(ctx context.Context, output, local, cachedir, name string, opts Op
 		cache,
 		repofetcher.Spec{Kind: "localdir", RepoSpec: localdir.RepoSpec{}},
 		name,
-		nil,
 	)
 	if err != nil {
 		return err

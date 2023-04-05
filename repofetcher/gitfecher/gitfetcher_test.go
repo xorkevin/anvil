@@ -60,7 +60,7 @@ func (m *mockGitCmd) GitClone(ctx context.Context, workingDir string, repodir st
 	return nil
 }
 
-func Test_Fetcher(t *testing.T) {
+func TestFetcher(t *testing.T) {
 	t.Parallel()
 
 	tempCacheDir := t.TempDir()

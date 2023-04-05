@@ -50,6 +50,7 @@ type (
 
 // New creates a new git [*Fetcher] which is rooted at a particular file system
 func New(cacheDir string, opts ...Opt) *Fetcher {
+	// TODO: accept fs.FS
 	f := &Fetcher{
 		fsys:         os.DirFS(filepath.FromSlash(cacheDir)),
 		cacheDir:     cacheDir,
@@ -154,6 +155,7 @@ func (f *Fetcher) Fetch(ctx context.Context, spec repofetcher.RepoSpec) (fs.FS, 
 			return nil, kerrors.WithKind(nil, repofetcher.ErrNetworkRequired, fmt.Sprintf("Cached repo not present: %s", repodir))
 		}
 		if cloned {
+			// TODO: use kfs interface
 			if err := os.RemoveAll(filepath.FromSlash(repopath)); err != nil {
 				return nil, kerrors.WithMsg(err, fmt.Sprintf("Failed to clean existing dir: %s", repodir))
 			}

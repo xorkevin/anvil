@@ -39,7 +39,7 @@ func mockSetupDir(basedir string, dir string, files []mockLocalFile) error {
 	return nil
 }
 
-func Test_Fetcher(t *testing.T) {
+func TestFetcher(t *testing.T) {
 	t.Parallel()
 
 	tempCacheDir := t.TempDir()

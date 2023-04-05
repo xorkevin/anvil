@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func Test_Engine(t *testing.T) {
+func TestEngine(t *testing.T) {
 	t.Parallel()
 
 	now := time.Now()

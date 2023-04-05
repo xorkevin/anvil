@@ -41,14 +41,3 @@ func MergePatch(target, patch any) any {
 	}
 	return t
 }
-
-func MergePatchObj(target, patch map[string]any) map[string]any {
-	if len(patch) == 0 {
-		return target
-	}
-	merged, ok := MergePatch(target, patch).(map[string]any)
-	if !ok {
-		return target
-	}
-	return merged
-}
