@@ -12,6 +12,7 @@ import (
 	"xorkevin.dev/hunter2/h2streamhash"
 	"xorkevin.dev/hunter2/h2streamhash/blake2bstream"
 	"xorkevin.dev/kerrors"
+	"xorkevin.dev/kfs"
 )
 
 type (
@@ -99,11 +100,15 @@ should be ignored
 			},
 		}
 
-		fetcher := New(tempCacheDir, OptGitCmd(&mockGitCmd{
-			repo:     repo,
-			files:    files,
-			gitFiles: gitFiles,
-		}))
+		fetcher := New(
+			kfs.New(os.DirFS(tempCacheDir), filepath.ToSlash(tempCacheDir)),
+			filepath.ToSlash(tempCacheDir),
+			OptGitCmd(&mockGitCmd{
+				repo:     repo,
+				files:    files,
+				gitFiles: gitFiles,
+			}),
+		)
 
 		repodir := "git%40example.com%3Aexample%2Frepo.git@test"
 		repospec, err := fetcher.Parse([]byte(`{"repo":"` + repo + `","tag":"test"}`))

@@ -557,5 +557,5 @@ xorkevin.dev/hunter2 v0.2.5 h1:X4W5IPSHLs3SIH6nuxEpEjTnx+XZaSXLg3N3qo4IYpE=
 xorkevin.dev/hunter2 v0.2.5/go.mod h1:eBwMewfDwh7BMHMLnYWvy1ephSoaDk61LbvSBqhIZZ0=
 xorkevin.dev/kerrors v0.1.5 h1:vszMcLbQjGn2DuqaQZNZNTbGw17qKvfH3X6E1s+1Iac=
 xorkevin.dev/kerrors v0.1.5/go.mod h1:HnfCCdUvvu5aXhHxO8TPa8KU3r5X2c2QZRbfE+HBLvc=
-xorkevin.dev/kfs v0.0.0-20230328081229-ce9bca234ce1 h1:CxVfvFzqwwf4n1Ss+QgQ2UwTd5+tWMsRjheLY5HHIeY=
-xorkevin.dev/kfs v0.0.0-20230328081229-ce9bca234ce1/go.mod h1:zDR7znYFDidg6MAoLvyFoPFERZM46gesM7wYtww7mSA=
+xorkevin.dev/kfs v0.0.0-20230406072906-1fcd960dbc89 h1:nt0VQnBvFt29qeOfF4Ph7tv5V1WTbL/xuzgdWsV23TA=
+xorkevin.dev/kfs v0.0.0-20230406072906-1fcd960dbc89/go.mod h1:zDR7znYFDidg6MAoLvyFoPFERZM46gesM7wYtww7mSA=

@@ -10,7 +10,7 @@ require (
 	github.com/stretchr/testify v1.8.2
 	xorkevin.dev/hunter2 v0.2.5
 	xorkevin.dev/kerrors v0.1.5
-	xorkevin.dev/kfs v0.0.0-20230328081229-ce9bca234ce1
+	xorkevin.dev/kfs v0.0.0-20230406072906-1fcd960dbc89
 )
 
 require (

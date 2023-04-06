@@ -49,10 +49,9 @@ type (
 )
 
 // New creates a new git [*Fetcher] which is rooted at a particular file system
-func New(cacheDir string, opts ...Opt) *Fetcher {
-	// TODO: accept fs.FS
+func New(fsys fs.FS, cacheDir string, opts ...Opt) *Fetcher {
 	f := &Fetcher{
-		fsys:         os.DirFS(filepath.FromSlash(cacheDir)),
+		fsys:         fsys,
 		cacheDir:     cacheDir,
 		gitDir:       ".git",
 		gitDirPrefix: ".git/",
@@ -146,7 +145,6 @@ func (f *Fetcher) Fetch(ctx context.Context, spec repofetcher.RepoSpec) (fs.FS, 
 	if err != nil {
 		return nil, err
 	}
-	repopath := path.Join(f.cacheDir, repodir)
 	if !cloned || f.forceFetch {
 		if f.noNetwork {
 			if f.forceFetch {
@@ -155,8 +153,7 @@ func (f *Fetcher) Fetch(ctx context.Context, spec repofetcher.RepoSpec) (fs.FS, 
 			return nil, kerrors.WithKind(nil, repofetcher.ErrNetworkRequired, fmt.Sprintf("Cached repo not present: %s", repodir))
 		}
 		if cloned {
-			// TODO: use kfs interface
-			if err := os.RemoveAll(filepath.FromSlash(repopath)); err != nil {
+			if err := kfs.RemoveAll(f.fsys, repodir); err != nil {
 				return nil, kerrors.WithMsg(err, fmt.Sprintf("Failed to clean existing dir: %s", repodir))
 			}
 		}
@@ -168,7 +165,7 @@ func (f *Fetcher) Fetch(ctx context.Context, spec repofetcher.RepoSpec) (fs.FS, 
 	if err != nil {
 		return nil, kerrors.WithMsg(err, fmt.Sprintf("Failed to get subdirectory: %s", repodir))
 	}
-	return kfs.NewReadOnlyFS(kfs.NewMaskFS(kfs.New(rfsys, repopath), f.maskGitDir)), nil
+	return kfs.NewReadOnlyFS(kfs.NewMaskFS(kfs.New(rfsys, path.Join(f.cacheDir, repodir)), f.maskGitDir)), nil
 }
 
 func (f *Fetcher) maskGitDir(p string) (bool, error) {

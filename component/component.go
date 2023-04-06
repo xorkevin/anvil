@@ -239,12 +239,15 @@ func Generate(ctx context.Context, output, local, cachedir, name string, opts Op
 
 	outputfs := kfs.New(os.DirFS(filepath.FromSlash(output)), output)
 
+	gitdir := path.Join(cachedir, "repos", "git")
+
 	cache := NewCache(
 		repofetcher.NewCache(
 			repofetcher.Map{
 				"localdir": localdir.New(local),
 				"git": gitfetcher.New(
-					path.Join(cachedir, "repos", "git"),
+					kfs.New(os.DirFS(filepath.FromSlash(gitdir)), gitdir),
+					gitdir,
 					gitfetcher.OptGitDir(opts.GitDir),
 					gitfetcher.OptGitCmd(gitfetcher.NewGitBin(
 						gitfetcher.OptBinName(opts.GitBin),
