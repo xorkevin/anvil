@@ -244,7 +244,9 @@ func Generate(ctx context.Context, output, local, cachedir, name string, opts Op
 	cache := NewCache(
 		repofetcher.NewCache(
 			repofetcher.Map{
-				"localdir": localdir.New(local),
+				"localdir": localdir.New(
+					kfs.New(os.DirFS(filepath.FromSlash(local)), local),
+				),
 				"git": gitfetcher.New(
 					kfs.New(os.DirFS(filepath.FromSlash(gitdir)), gitdir),
 					gitdir,

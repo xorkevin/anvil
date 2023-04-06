@@ -4,7 +4,6 @@ import (
 	"context"
 	"io/fs"
 	"os"
-	"path"
 	"path/filepath"
 	"testing"
 
@@ -71,7 +70,7 @@ foobar
 		assert.NoError(mockSetupDir(tempCacheDir, "foo", files))
 
 		m := repofetcher.Map{
-			"localdir": localdir.New(path.Join(filepath.ToSlash(tempCacheDir), "foo")),
+			"localdir": localdir.New(os.DirFS(filepath.Join(tempCacheDir, "foo"))),
 		}
 
 		spec, err := m.Parse("localdir", []byte(`{"dir":"foo"}`))

@@ -140,6 +140,7 @@ func NewCache(fetchers Map, local map[string]struct{}, checksums map[string]stri
 	verifier.Register(hasher)
 	return &Cache{
 		fetchers:  fetchers,
+		cache:     map[string]fs.FS{},
 		local:     local,
 		checksums: checksums,
 		hasher:    hasher,

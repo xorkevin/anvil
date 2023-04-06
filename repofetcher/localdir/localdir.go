@@ -3,8 +3,6 @@ package localdir
 import (
 	"context"
 	"io/fs"
-	"os"
-	"path/filepath"
 
 	"xorkevin.dev/anvil/repofetcher"
 	"xorkevin.dev/kerrors"
@@ -22,9 +20,9 @@ type (
 )
 
 // New creates a new local dir [*Fetcher] which is rooted at a particular file system
-func New(dir string) *Fetcher {
+func New(fsys fs.FS) *Fetcher {
 	return &Fetcher{
-		fsys: kfs.NewReadOnlyFS(kfs.New(os.DirFS(filepath.FromSlash(dir)), dir)),
+		fsys: kfs.NewReadOnlyFS(fsys),
 	}
 }
 
