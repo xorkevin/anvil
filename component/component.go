@@ -33,6 +33,7 @@ func (e errImportCycle) Error() string {
 }
 
 const (
+	repoKindLocalDir  = "localdir"
 	configKindJsonnet = "jsonnet"
 )
 
@@ -54,11 +55,10 @@ type (
 
 	// ComponentData is the shape of a generated config component
 	ComponentData struct {
-		Kind     string          `json:"kind"`
-		RepoKind string          `json:"repokind"`
-		Repo     json.RawMessage `json:"repo"`
-		Path     string          `json:"path"`
-		Args     map[string]any  `json:"args"`
+		Kind string          `json:"kind"`
+		Repo json.RawMessage `json:"repo"`
+		Path string          `json:"path"`
+		Args map[string]any  `json:"args"`
 	}
 
 	// Component is a package of files to generate
@@ -88,7 +88,9 @@ func parseConfigFile(ctx context.Context, cache *Cache, spec repofetcher.Spec, d
 func parseSubcomponent(ctx context.Context, cache *Cache, ss *stackSet, spec repofetcher.Spec, dir string, data ComponentData) ([]Component, error) {
 	var compspec repofetcher.Spec
 	var compname string
-	if data.RepoKind == "" {
+	if data.Kind == repoKindLocalDir {
+		return nil, kerrors.WithKind(nil, repofetcher.ErrUnknownKind, fmt.Sprintf("Invalid repo kind: %s", data.Kind))
+	} else if data.Kind == "" {
 		compspec = spec
 		compname = path.Join(dir, data.Path)
 		if !fs.ValidPath(compname) {
@@ -96,9 +98,9 @@ func parseSubcomponent(ctx context.Context, cache *Cache, ss *stackSet, spec rep
 		}
 	} else {
 		var err error
-		compspec, err = cache.Parse(data.RepoKind, data.Repo)
+		compspec, err = cache.Parse(data.Kind, data.Repo)
 		if err != nil {
-			return nil, kerrors.WithMsg(err, fmt.Sprintf("Invalid %s subcomponent", data.RepoKind))
+			return nil, kerrors.WithMsg(err, fmt.Sprintf("Invalid %s subcomponent", data.Kind))
 		}
 		if !fs.ValidPath(data.Path) {
 			return nil, kerrors.WithKind(nil, ErrInvalidDir, fmt.Sprintf("Invalid repo dir %s for subcomponent %s", data.Path, compspec))
@@ -244,7 +246,7 @@ func Generate(ctx context.Context, output, local, cachedir, name string, opts Op
 	cache := NewCache(
 		repofetcher.NewCache(
 			repofetcher.Map{
-				"localdir": localdir.New(
+				repoKindLocalDir: localdir.New(
 					kfs.New(os.DirFS(filepath.FromSlash(local)), local),
 				),
 				"git": gitfetcher.New(
@@ -260,7 +262,7 @@ func Generate(ctx context.Context, output, local, cachedir, name string, opts Op
 				),
 			},
 			map[string]struct{}{
-				"localdir": {},
+				repoKindLocalDir: {},
 			},
 			checksums,
 		),
@@ -272,7 +274,7 @@ func Generate(ctx context.Context, output, local, cachedir, name string, opts Op
 	components, err := ParseComponents(
 		ctx,
 		cache,
-		repofetcher.Spec{Kind: "localdir", RepoSpec: localdir.RepoSpec{}},
+		repofetcher.Spec{Kind: repoKindLocalDir, RepoSpec: localdir.RepoSpec{}},
 		name,
 	)
 	if err != nil {

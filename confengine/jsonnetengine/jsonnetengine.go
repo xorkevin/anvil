@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/go-jsonnet"
 	"github.com/google/go-jsonnet/ast"
+	"github.com/mitchellh/mapstructure"
 	"xorkevin.dev/anvil/confengine"
 	"xorkevin.dev/anvil/util/kjson"
 	"xorkevin.dev/kerrors"
@@ -52,8 +53,8 @@ func New(fsys fs.FS, opts ...Opt) *Engine {
 
 	for _, v := range append([]NativeFunc{
 		{
-			name:   "envArgs",
-			fn:     eng.getEnvArgs,
+			name:   "getArgs",
+			fn:     eng.getArgs,
 			params: []string{},
 		},
 		{
@@ -79,6 +80,20 @@ func New(fsys fs.FS, opts ...Opt) *Engine {
 				return kjson.MergePatch(args[0], args[1]), nil
 			},
 			params: []string{"a", "b"},
+		},
+		{
+			name: "pathJoin",
+			fn: func(args []any) (any, error) {
+				if len(args) != 1 {
+					return nil, kerrors.WithKind(nil, confengine.ErrInvalidArgs, "pathJoin needs 1 argument")
+				}
+				var segments []string
+				if err := mapstructure.Decode(args[0], &segments); err != nil {
+					return nil, kerrors.WithKind(err, confengine.ErrInvalidArgs, "Failed to decode path segments")
+				}
+				return path.Join(segments...), nil
+			},
+			params: []string{"v"},
 		},
 	}, eng.nativeFuncs...) {
 		params := make(ast.Identifiers, 0, len(v.params))
@@ -134,9 +149,9 @@ func (b Builder) Build(fsys fs.FS) (confengine.ConfEngine, error) {
 	return New(fsys, b...), nil
 }
 
-func (e *Engine) getEnvArgs(args []any) (any, error) {
+func (e *Engine) getArgs(args []any) (any, error) {
 	if len(args) != 0 {
-		return nil, kerrors.WithKind(nil, confengine.ErrInvalidArgs, "envArgs does not take arguments")
+		return nil, kerrors.WithKind(nil, confengine.ErrInvalidArgs, "getArgs does not take arguments")
 	}
 	return e.args, nil
 }

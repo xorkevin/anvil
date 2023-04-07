@@ -33,11 +33,77 @@ func TestGenerate(t *testing.T) {
 				Fsys: fstest.MapFS{
 					"components/config.jsonnet": &fstest.MapFile{
 						Data: []byte(`
+local anvil = import 'anvil.libsonnet';
+
+local output = 'anvil_out';
+
 {
-  "version": "xorkevin.dev/anvil/v1alpha1",
-  "templates": [],
-  "components": [],
+  version: 'xorkevin.dev/anvil/v1alpha1',
+  templates: [
+    {
+      kind: 'jsonnetstr',
+      path: 'foo.txt',
+      args: {
+        msg: 'hello, world',
+      },
+      output: anvil.pathJoin([output, 'foo.txt']),
+    },
+  ],
+  components: [
+    {
+      path: 'subcomp/config.jsonnet',
+      args: {
+        output: anvil.pathJoin([output, 'bar']),
+      },
+    },
+  ],
 }
+`),
+						Mode:    filemode,
+						ModTime: now,
+					},
+					"components/foo.txt": &fstest.MapFile{
+						Data: []byte(`
+local anvil = import 'anvil.libsonnet';
+local args = anvil.getArgs();
+
+@'Greetings. %(msg)s' % args
+`),
+						Mode:    filemode,
+						ModTime: now,
+					},
+					"components/subcomp/config.jsonnet": &fstest.MapFile{
+						Data: []byte(`
+local anvil = import 'anvil.libsonnet';
+
+local args = anvil.getArgs();
+local output = args.output;
+
+{
+  version: 'xorkevin.dev/anvil/v1alpha1',
+  templates: [
+    {
+      kind: 'jsonnetstr',
+      path: 'foobar.txt',
+      args: {
+        value: 'foo bar baz',
+      },
+      output: anvil.pathJoin([output, 'baz.txt']),
+    },
+  ],
+  components: [],
+}
+`),
+						Mode:    filemode,
+						ModTime: now,
+					},
+					"components/subcomp/foobar.txt": &fstest.MapFile{
+						Data: []byte(`
+local anvil = import 'anvil.libsonnet';
+
+local args = anvil.getArgs();
+
+@'Arg value: %(value)s' % args
 `),
 						Mode:    filemode,
 						ModTime: now,
@@ -45,7 +111,10 @@ func TestGenerate(t *testing.T) {
 				},
 			},
 			ConfigFile: "components/config.jsonnet",
-			Files:      map[string]string{},
+			Files: map[string]string{
+				"anvil_out/foo.txt":     "Greetings. hello, world\n",
+				"anvil_out/bar/baz.txt": "Arg value: foo bar baz\n",
+			},
 		},
 	} {
 		tc := tc
@@ -72,7 +141,17 @@ func TestGenerate(t *testing.T) {
 
 			components, err := ParseComponents(context.Background(), cache, repofetcher.Spec{Kind: "localdir", RepoSpec: localdir.RepoSpec{}}, tc.ConfigFile)
 			assert.NoError(err)
-			assert.Len(components, 1)
+			assert.Len(components, 2)
+
+			outputfs := &kfstest.MapFS{
+				Fsys: fstest.MapFS{},
+			}
+			assert.NoError(WriteComponents(context.Background(), cache, outputfs, components))
+
+			for k, v := range tc.Files {
+				assert.NotNil(outputfs.Fsys[k])
+				assert.Equal(v, string(outputfs.Fsys[k].Data))
+			}
 		})
 	}
 }

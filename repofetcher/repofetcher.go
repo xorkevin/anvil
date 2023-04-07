@@ -88,7 +88,7 @@ func (s Spec) String() string {
 func (m Map) Parse(kind string, repobytes []byte) (Spec, error) {
 	f, ok := m[kind]
 	if !ok {
-		return Spec{}, ErrUnknownKind
+		return Spec{}, kerrors.WithKind(nil, ErrUnknownKind, fmt.Sprintf("Unknown repo kind: %s", kind))
 	}
 	repospec, err := f.Parse(repobytes)
 	if err != nil {

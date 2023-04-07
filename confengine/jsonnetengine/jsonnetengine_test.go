@@ -30,7 +30,7 @@ func TestEngine(t *testing.T) {
 				"config.jsonnet": &fstest.MapFile{
 					Data: []byte(`
 local anvil = import 'anvil.libsonnet';
-local args = anvil.envArgs();
+local args = anvil.getArgs();
 
 local world = import 'subdir/world.libsonnet';
 
