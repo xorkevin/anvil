@@ -17,6 +17,7 @@ import (
 	"xorkevin.dev/anvil/util/kjson"
 	"xorkevin.dev/kerrors"
 	"xorkevin.dev/kfs"
+	"xorkevin.dev/klog"
 )
 
 type (
@@ -24,6 +25,7 @@ type (
 	Fetcher struct {
 		fsys         fs.FS
 		cacheDir     string
+		log          *klog.LevelLogger
 		gitDir       string
 		gitDirPrefix string
 		gitCmd       GitCmd
@@ -49,10 +51,11 @@ type (
 )
 
 // New creates a new git [*Fetcher] which is rooted at a particular file system
-func New(fsys fs.FS, cacheDir string, opts ...Opt) *Fetcher {
+func New(fsys fs.FS, cacheDir string, log klog.Logger, opts ...Opt) *Fetcher {
 	f := &Fetcher{
 		fsys:         fsys,
 		cacheDir:     cacheDir,
+		log:          klog.NewLevelLogger(log),
 		gitDir:       ".git",
 		gitDirPrefix: ".git/",
 		gitCmd:       NewGitBin(),
@@ -156,10 +159,14 @@ func (f *Fetcher) Fetch(ctx context.Context, spec repofetcher.RepoSpec) (fs.FS, 
 			if err := kfs.RemoveAll(f.fsys, repodir); err != nil {
 				return nil, kerrors.WithMsg(err, fmt.Sprintf("Failed to clean existing dir: %s", repodir))
 			}
+			f.log.Info(ctx, "Removed existing repo dir due to force fetch", klog.AString("dir", repodir))
 		}
 		if err := f.gitCmd.GitClone(ctx, f.cacheDir, repodir, repospec); err != nil {
 			return nil, err
 		}
+		f.log.Info(ctx, "Cloned git repo", klog.AString("dir", repodir))
+	} else {
+		f.log.Info(ctx, "Using existing git repo", klog.AString("dir", repodir))
 	}
 	rfsys, err := fs.Sub(f.fsys, repodir)
 	if err != nil {

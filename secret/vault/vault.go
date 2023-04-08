@@ -1,18 +1,18 @@
 package vault
 
 import (
-	"bytes"
 	"context"
-	"errors"
 	"fmt"
-	"io"
 	"io/fs"
-	"log"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 
 	vaultapi "github.com/hashicorp/vault/api"
+	"xorkevin.dev/anvil/util/kjson"
+	"xorkevin.dev/kerrors"
+	"xorkevin.dev/klog"
 )
 
 const (
@@ -20,7 +20,15 @@ const (
 )
 
 // ErrInvalidRoleKind is returned when attempting to parse a role with an invalid kind
-var ErrInvalidRoleKind = errors.New("Invalid role kind")
+var ErrInvalidRoleKind errInvalidRoleKind
+
+type (
+	errInvalidRoleKind struct{}
+)
+
+func (e errInvalidRoleKind) Error() string {
+	return "Invalid role kind"
+}
 
 type (
 	// VaultClient interacts with vault
@@ -41,93 +49,80 @@ type (
 func NewHTTPVaultClient() (*HTTPVaultClient, error) {
 	config := vaultapi.DefaultConfig()
 	if err := config.Error; err != nil {
-		return nil, fmt.Errorf("Failed to init vault config: %w", err)
+		return nil, kerrors.WithMsg(err, "Failed to init vault config")
 	}
 	client, err := vaultapi.NewClient(config)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to create vault client: %w", err)
+		return nil, kerrors.WithMsg(err, "Failed to create vault client")
 	}
 	return &HTTPVaultClient{
-		client: client,
+		client:  client,
+		sys:     client.Sys(),
+		logical: client.Logical(),
 	}, nil
 }
 
 // PutPolicy uploads a policy to vault
 func (v *HTTPVaultClient) PutPolicy(name, rules string) error {
-	if v.sys == nil {
-		v.sys = v.client.Sys()
+	if err := v.sys.PutPolicy(name, rules); err != nil {
+		return kerrors.WithMsg(err, "Failed to store vault policy")
 	}
-	return v.sys.PutPolicy(name, rules)
+	return nil
 }
 
 // PutRole uploads a role to vault
 func (v *HTTPVaultClient) PutRole(mount, name string, body map[string]interface{}) error {
-	if v.logical == nil {
-		v.logical = v.client.Logical()
+	if _, err := v.logical.Write(fmt.Sprintf("auth/%s/role/%s", mount, name), body); err != nil {
+		return kerrors.WithMsg(err, fmt.Sprintf("Failed to store vault role %s for auth %s", name, mount))
 	}
-	_, err := v.logical.Write(fmt.Sprintf("auth/%s/role/%s", mount, name), body)
-	return err
+	return nil
 }
 
 type (
 	// Opts are vault client opts
 	Opts struct {
-		Verbose bool
-		DryRun  bool
+		DryRun bool
 	}
 )
 
 // AddPolicyDir uploads policies from a directory to vault
-func AddPolicyDir(ctx context.Context, client VaultClient, dir fs.FS, opts Opts) error {
-	entries, err := fs.ReadDir(dir, ".")
+func AddPolicyDir(ctx context.Context, log klog.Logger, client VaultClient, fsys fs.FS, opts Opts) error {
+	l := klog.NewLevelLogger(log)
+
+	entries, err := fs.ReadDir(fsys, ".")
 	if err != nil {
-		return fmt.Errorf("Failed to read dir: %w", err)
+		return kerrors.WithMsg(err, "Failed to read dir")
 	}
 	for _, i := range entries {
 		if i.IsDir() {
 			continue
 		}
-		if err := func() error {
-			name := i.Name()
-			file, err := dir.Open(name)
-			if err != nil {
-				return fmt.Errorf("Invalid file %s: %w", name, err)
-			}
-			defer func() {
-				if err := file.Close(); err != nil {
-					log.Printf("Failed to close open file %s: %v", name, err)
-				}
-			}()
-			b := &bytes.Buffer{}
-			if _, err := io.Copy(b, file); err != nil {
-				return fmt.Errorf("Failed to read file %s: %w", name, err)
-			}
-			base := filepath.Base(name)
-			policyName := strings.TrimSuffix(base, filepath.Ext(base))
-			if opts.Verbose {
-				log.Printf("Uploading policy %s", policyName)
-			}
-			if !opts.DryRun {
-				if err := client.PutPolicy(policyName, b.String()); err != nil {
-					return fmt.Errorf("Failed to upload policy %s to vault: %w", policyName, err)
-				}
-			}
-			return nil
-		}(); err != nil {
-			return err
+		name := i.Name()
+		b, err := fs.ReadFile(fsys, name)
+		if err != nil {
+			return kerrors.WithMsg(err, fmt.Sprintf("Failed to read file: %s", name))
 		}
+		policyName := strings.TrimSuffix(name, path.Ext(name))
+		if opts.DryRun {
+			l.Info(ctx, "Dry run upload vault policy", klog.AString("policy", policyName))
+		} else {
+			if err := client.PutPolicy(policyName, string(b)); err != nil {
+				return kerrors.WithMsg(err, fmt.Sprintf("Failed to upload vault policy: %s", policyName))
+			}
+			l.Info(ctx, "Uploaded vault policy", klog.AString("policy", policyName))
+		}
+		return nil
 	}
 	return nil
 }
 
 // AddPolicies creates a vault client and uploads policies from a directory
-func AddPolicies(ctx context.Context, path string, opts Opts) error {
+func AddPolicies(ctx context.Context, log klog.Logger, name string, opts Opts) error {
 	client, err := NewHTTPVaultClient()
 	if err != nil {
 		return err
 	}
-	dir := os.DirFS(path)
-	if err := AddPolicyDir(ctx, client, dir, opts); err != nil {
+	if err := AddPolicyDir(ctx, log, client, os.DirFS(filepath.FromSlash(name)), opts); err != nil {
 		return err
 	}
 	return nil
@@ -136,14 +131,14 @@ func AddPolicies(ctx context.Context, path string, opts Opts) error {
 type (
 	// roleData is the shape of a role
 	roleData struct {
-		Kind      string   `json:"kind" yaml:"kind"`
-		KubeMount string   `json:"kubemount" yaml:"kubemount"`
-		Role      string   `json:"role" yaml:"role"`
-		SA        string   `json:"service_account,omitempty" yaml:"service_account,omitempty"`
-		NS        string   `json:"namespace,omitempty" yaml:"namespace,omitempty"`
-		Policies  []string `json:"policies" yaml:"policies"`
-		TTL       string   `json:"ttl" yaml:"ttl"`
-		MaxTTL    string   `json:"maxttl" yaml:"maxttl"`
+		Kind      string   `json:"kind"`
+		KubeMount string   `json:"kubemount"`
+		Role      string   `json:"role"`
+		SA        string   `json:"service_account,omitempty"`
+		NS        string   `json:"namespace,omitempty"`
+		Policies  []string `json:"policies"`
+		TTL       string   `json:"ttl"`
+		MaxTTL    string   `json:"maxttl"`
 	}
 
 	// roleConfigData is the shape of a role config
@@ -153,10 +148,12 @@ type (
 )
 
 // AddRolesDir uploads roles from a directory to vault
-func AddRolesDir(ctx context.Context, client VaultClient, dir fs.FS, opts Opts) error {
-	entries, err := fs.ReadDir(dir, ".")
+func AddRolesDir(ctx context.Context, log klog.Logger, client VaultClient, fsys fs.FS, opts Opts) error {
+	l := klog.NewLevelLogger(log)
+
+	entries, err := fs.ReadDir(fsys, ".")
 	if err != nil {
-		return fmt.Errorf("Failed to read dir: %w", err)
+		return kerrors.WithMsg(err, "Failed to read dir")
 	}
 
 	var roles []roleData
@@ -164,17 +161,16 @@ func AddRolesDir(ctx context.Context, client VaultClient, dir fs.FS, opts Opts) 
 		if i.IsDir() {
 			continue
 		}
-		if err := func() error {
-			name := i.Name()
-			var roleConfig roleConfigData
-			if err := configfile.DecodeJSONorYAMLFile(dir, name, &roleConfig); err != nil {
-				return fmt.Errorf("Invalid vault roles file %s: %w", name, err)
-			}
-			roles = append(roles, roleConfig.Roles...)
-			return nil
-		}(); err != nil {
-			return err
+		name := i.Name()
+		b, err := fs.ReadFile(fsys, name)
+		if err != nil {
+			return kerrors.WithMsg(err, fmt.Sprintf("Failed to read file: %s", name))
 		}
+		var roleConfig roleConfigData
+		if err := kjson.Unmarshal(b, &roleConfig); err != nil {
+			return kerrors.WithMsg(err, fmt.Sprintf("Invalid vault roles file: %s", name))
+		}
+		roles = append(roles, roleConfig.Roles...)
 	}
 
 	for _, i := range roles {
@@ -183,33 +179,33 @@ func AddRolesDir(ctx context.Context, client VaultClient, dir fs.FS, opts Opts) 
 			body := map[string]interface{}{
 				"bound_service_account_names":      i.SA,
 				"bound_service_account_namespaces": i.NS,
-				"policies":                         i.Policies,
-				"ttl":                              i.TTL,
-				"max_ttl":                          i.MaxTTL,
+				"token_policies":                   i.Policies,
+				"token_ttl":                        i.TTL,
+				"token_max_ttl":                    i.MaxTTL,
+				"token_no_default_policy":          true,
 			}
-			if opts.Verbose {
-				log.Printf("Uploading role %s: %v", i.Role, body)
-			}
-			if !opts.DryRun {
+			if opts.DryRun {
+				l.Info(ctx, "Dry run upload vault role", klog.AString("role", i.Role))
+			} else {
 				if err := client.PutRole(i.KubeMount, i.Role, body); err != nil {
-					return fmt.Errorf("Failed to upload role %s to vault: %w", i.Role, err)
+					return kerrors.WithMsg(err, fmt.Sprintf("Failed to upload vault role: %s", i.Role))
 				}
+				l.Info(ctx, "Uploaded vault role", klog.AString("role", i.Role))
 			}
 		default:
-			return fmt.Errorf("%w: %s", ErrInvalidRoleKind, i.Kind)
+			return kerrors.WithKind(nil, ErrInvalidRoleKind, fmt.Sprintf("Invalid role kind: %s", i.Kind))
 		}
 	}
 	return nil
 }
 
 // AddRoles creates a vault client and uploads roles from a directory
-func AddRoles(ctx context.Context, path string, opts Opts) error {
+func AddRoles(ctx context.Context, log klog.Logger, name string, opts Opts) error {
 	client, err := NewHTTPVaultClient()
 	if err != nil {
 		return err
 	}
-	dir := os.DirFS(path)
-	if err := AddRolesDir(ctx, client, dir, opts); err != nil {
+	if err := AddRolesDir(ctx, log, client, os.DirFS(filepath.FromSlash(name)), opts); err != nil {
 		return err
 	}
 	return nil

@@ -14,11 +14,12 @@ import (
 	"xorkevin.dev/anvil/confengine"
 	"xorkevin.dev/anvil/confengine/jsonnetengine"
 	"xorkevin.dev/anvil/repofetcher"
-	"xorkevin.dev/anvil/repofetcher/gitfecher"
+	gitfetcher "xorkevin.dev/anvil/repofetcher/gitfecher"
 	"xorkevin.dev/anvil/repofetcher/localdir"
 	"xorkevin.dev/anvil/util/kjson"
 	"xorkevin.dev/kerrors"
 	"xorkevin.dev/kfs"
+	"xorkevin.dev/klog"
 )
 
 // ErrImportCycle is returned when component dependencies form a cycle
@@ -38,23 +39,15 @@ const (
 )
 
 type (
-	// ConfigData is the shape of a generated config
-	ConfigData struct {
+	// configData is the shape of a generated config
+	configData struct {
 		Version    string          `json:"version"`
-		Templates  []TemplateData  `json:"templates"`
-		Components []ComponentData `json:"components"`
+		Templates  []Template      `json:"templates"`
+		Components []componentData `json:"components"`
 	}
 
-	// TemplateData is the shape of a generated config template
-	TemplateData struct {
-		Kind   string         `json:"kind"`
-		Path   string         `json:"path"`
-		Args   map[string]any `json:"args"`
-		Output string         `json:"output"`
-	}
-
-	// ComponentData is the shape of a generated config component
-	ComponentData struct {
+	// componentData is the shape of a generated config component
+	componentData struct {
 		Kind string          `json:"kind"`
 		Repo json.RawMessage `json:"repo"`
 		Path string          `json:"path"`
@@ -65,11 +58,19 @@ type (
 	Component struct {
 		Spec      repofetcher.Spec
 		Dir       string
-		Templates []TemplateData
+		Templates []Template
+	}
+
+	// Template is a file to generate
+	Template struct {
+		Kind   string         `json:"kind"`
+		Path   string         `json:"path"`
+		Args   map[string]any `json:"args"`
+		Output string         `json:"output"`
 	}
 )
 
-func parseConfigFile(ctx context.Context, cache *Cache, spec repofetcher.Spec, dir string, name string, args map[string]any) (*ConfigData, error) {
+func parseConfigFile(ctx context.Context, cache *Cache, spec repofetcher.Spec, dir string, name string, args map[string]any) (*configData, error) {
 	eng, err := cache.Get(ctx, configKindJsonnet, spec, dir)
 	if err != nil {
 		return nil, err
@@ -78,14 +79,14 @@ func parseConfigFile(ctx context.Context, cache *Cache, spec repofetcher.Spec, d
 	if err != nil {
 		return nil, kerrors.WithMsg(err, fmt.Sprintf("Failed executing component config %s %s/%s", spec, dir, name))
 	}
-	config := &ConfigData{}
+	config := &configData{}
 	if err := kjson.Unmarshal(outbytes, config); err != nil {
 		return nil, kerrors.WithMsg(err, fmt.Sprintf("Invalid output for component config %s %s/%s", spec, dir, name))
 	}
 	return config, nil
 }
 
-func parseSubcomponent(ctx context.Context, cache *Cache, ss *stackSet, spec repofetcher.Spec, dir string, data ComponentData) ([]Component, error) {
+func parseSubcomponent(ctx context.Context, cache *Cache, ss *stackSet, spec repofetcher.Spec, dir string, data componentData) ([]Component, error) {
 	var compspec repofetcher.Spec
 	var compname string
 	if data.Kind == repoKindLocalDir {
@@ -197,12 +198,12 @@ func WriteComponents(ctx context.Context, cache *Cache, fsys fs.FS, components [
 type (
 	// Opts holds generation opts
 	Opts struct {
-		GitDir           string
-		GitBin           string
-		GitBinQuiet      bool
 		NoNetwork        bool
 		ForceFetch       bool
 		RepoChecksumFile string
+		GitDir           string
+		GitBin           string
+		GitBinQuiet      bool
 		JsonnetLibName   string
 	}
 
@@ -229,7 +230,7 @@ func parseRepoChecksumFile(name string) (map[string]string, error) {
 }
 
 // Generate reads configs and writes components to the filesystem
-func Generate(ctx context.Context, output, local, cachedir, name string, opts Opts) error {
+func Generate(ctx context.Context, log klog.Logger, output, local, cachedir, name string, opts Opts) error {
 	var checksums map[string]string
 	if opts.RepoChecksumFile != "" {
 		var err error
@@ -252,6 +253,7 @@ func Generate(ctx context.Context, output, local, cachedir, name string, opts Op
 				"git": gitfetcher.New(
 					kfs.New(os.DirFS(filepath.FromSlash(gitdir)), gitdir),
 					gitdir,
+					log.Sublogger("gitfetcher"),
 					gitfetcher.OptGitDir(opts.GitDir),
 					gitfetcher.OptGitCmd(gitfetcher.NewGitBin(
 						gitfetcher.OptBinName(opts.GitBin),
