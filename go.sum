@@ -561,5 +561,5 @@ xorkevin.dev/kerrors v0.1.5 h1:vszMcLbQjGn2DuqaQZNZNTbGw17qKvfH3X6E1s+1Iac=
 xorkevin.dev/kerrors v0.1.5/go.mod h1:HnfCCdUvvu5aXhHxO8TPa8KU3r5X2c2QZRbfE+HBLvc=
 xorkevin.dev/kfs v0.0.0-20230406072906-1fcd960dbc89 h1:nt0VQnBvFt29qeOfF4Ph7tv5V1WTbL/xuzgdWsV23TA=
 xorkevin.dev/kfs v0.0.0-20230406072906-1fcd960dbc89/go.mod h1:zDR7znYFDidg6MAoLvyFoPFERZM46gesM7wYtww7mSA=
-xorkevin.dev/klog v0.0.0-20230408073905-f4d25d26db29 h1:MrGB+w8t0tmxrIys++msOmVx9chwwIWcCitM2P11Cgg=
-xorkevin.dev/klog v0.0.0-20230408073905-f4d25d26db29/go.mod h1:XTsNnpqNMRoy1t7q6LShju8vI5p/439F27BvJxokqws=
+xorkevin.dev/klog v0.0.0-20230408090513-cffae1892d50 h1:Fl03DGJlfyY+sGaLkrbdjH9rCh2S7Yr4vIJkqIys6SQ=
+xorkevin.dev/klog v0.0.0-20230408090513-cffae1892d50/go.mod h1:XTsNnpqNMRoy1t7q6LShju8vI5p/439F27BvJxokqws=

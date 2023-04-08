@@ -2,6 +2,7 @@ package component
 
 import (
 	"context"
+	"io"
 	"io/fs"
 	"testing"
 	"testing/fstest"
@@ -13,6 +14,7 @@ import (
 	"xorkevin.dev/anvil/repofetcher"
 	"xorkevin.dev/anvil/repofetcher/localdir"
 	"xorkevin.dev/kfs/kfstest"
+	"xorkevin.dev/klog"
 )
 
 func TestGenerate(t *testing.T) {
@@ -123,6 +125,8 @@ local args = anvil.getArgs();
 
 			assert := require.New(t)
 
+			log := klog.New(klog.OptHandler(klog.NewJSONSlogHandler(io.Discard)))
+
 			cache := NewCache(
 				repofetcher.NewCache(
 					repofetcher.Map{
@@ -146,7 +150,7 @@ local args = anvil.getArgs();
 			outputfs := &kfstest.MapFS{
 				Fsys: fstest.MapFS{},
 			}
-			assert.NoError(WriteComponents(context.Background(), cache, outputfs, components))
+			assert.NoError(WriteComponents(context.Background(), log, cache, outputfs, components, false))
 
 			for k, v := range tc.Files {
 				assert.NotNil(outputfs.Fsys[k])

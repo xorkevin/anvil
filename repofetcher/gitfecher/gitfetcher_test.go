@@ -2,6 +2,7 @@ package gitfetcher
 
 import (
 	"context"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -13,6 +14,7 @@ import (
 	"xorkevin.dev/hunter2/h2streamhash/blake2bstream"
 	"xorkevin.dev/kerrors"
 	"xorkevin.dev/kfs"
+	"xorkevin.dev/klog"
 )
 
 type (
@@ -75,6 +77,8 @@ func TestFetcher(t *testing.T) {
 
 		assert := require.New(t)
 
+		log := klog.New(klog.OptHandler(klog.NewJSONSlogHandler(io.Discard)))
+
 		repo := "git@example.com:example/repo.git"
 
 		files := []mockGitFile{
@@ -103,6 +107,7 @@ should be ignored
 		fetcher := New(
 			kfs.New(os.DirFS(tempCacheDir), filepath.ToSlash(tempCacheDir)),
 			filepath.ToSlash(tempCacheDir),
+			log,
 			OptGitCmd(&mockGitCmd{
 				repo:     repo,
 				files:    files,

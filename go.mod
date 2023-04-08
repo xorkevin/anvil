@@ -5,12 +5,14 @@ go 1.19
 require (
 	github.com/google/go-jsonnet v0.19.1
 	github.com/hashicorp/vault/api v1.9.0
+	github.com/mitchellh/mapstructure v1.5.0
 	github.com/spf13/cobra v1.6.1
 	github.com/spf13/viper v1.15.0
 	github.com/stretchr/testify v1.8.2
 	xorkevin.dev/hunter2 v0.2.5
 	xorkevin.dev/kerrors v0.1.5
 	xorkevin.dev/kfs v0.0.0-20230406072906-1fcd960dbc89
+	xorkevin.dev/klog v0.0.0-20230408090513-cffae1892d50
 )
 
 require (
@@ -30,7 +32,6 @@ require (
 	github.com/inconshreveable/mousetrap v1.0.1 // indirect
 	github.com/magiconair/properties v1.8.7 // indirect
 	github.com/mitchellh/go-homedir v1.1.0 // indirect
-	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/pelletier/go-toml/v2 v2.0.6 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
@@ -51,5 +52,4 @@ require (
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	sigs.k8s.io/yaml v1.1.0 // indirect
-	xorkevin.dev/klog v0.0.0-20230408073905-f4d25d26db29 // indirect
 )

@@ -144,6 +144,7 @@ func (f *Fetcher) Fetch(ctx context.Context, spec repofetcher.RepoSpec) (fs.FS, 
 	if err != nil {
 		return nil, err
 	}
+	ctx = klog.CtxWithAttrs(ctx, klog.AString("repodir", repodir))
 	cloned, err := f.checkRepoDir(repodir)
 	if err != nil {
 		return nil, err
@@ -159,14 +160,14 @@ func (f *Fetcher) Fetch(ctx context.Context, spec repofetcher.RepoSpec) (fs.FS, 
 			if err := kfs.RemoveAll(f.fsys, repodir); err != nil {
 				return nil, kerrors.WithMsg(err, fmt.Sprintf("Failed to clean existing dir: %s", repodir))
 			}
-			f.log.Info(ctx, "Removed existing repo dir due to force fetch", klog.AString("dir", repodir))
+			f.log.Info(ctx, "Removed existing repo dir due to force fetch")
 		}
 		if err := f.gitCmd.GitClone(ctx, f.cacheDir, repodir, repospec); err != nil {
 			return nil, err
 		}
-		f.log.Info(ctx, "Cloned git repo", klog.AString("dir", repodir))
+		f.log.Info(ctx, "Cloned git repo")
 	} else {
-		f.log.Info(ctx, "Using existing git repo", klog.AString("dir", repodir))
+		f.log.Info(ctx, "Using existing git repo")
 	}
 	rfsys, err := fs.Sub(f.fsys, repodir)
 	if err != nil {

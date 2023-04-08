@@ -168,7 +168,9 @@ func ParseComponents(ctx context.Context, cache *Cache, spec repofetcher.Spec, n
 	return parseComponentsRec(ctx, cache, newStackSet(), spec, name, nil)
 }
 
-func writeComponent(ctx context.Context, cache *Cache, fsys fs.FS, component Component) error {
+func writeComponent(ctx context.Context, log *klog.LevelLogger, cache *Cache, fsys fs.FS, component Component, dryrun bool) error {
+	ctx = klog.CtxWithAttrs(ctx, klog.AString("repo", component.Spec.String()), klog.AString("dir", component.Dir))
+	log.Info(ctx, "Writing component")
 	for _, i := range component.Templates {
 		eng, err := cache.Get(ctx, i.Kind, component.Spec, component.Dir)
 		if err != nil {
@@ -178,17 +180,23 @@ func writeComponent(ctx context.Context, cache *Cache, fsys fs.FS, component Com
 		if err != nil {
 			return kerrors.WithMsg(err, fmt.Sprintf("Failed executing component template %s %s/%s", component.Spec, component.Dir, i.Path))
 		}
-		if err := kfs.WriteFile(fsys, i.Output, outbytes, 0o644); err != nil {
-			return kerrors.WithMsg(err, fmt.Sprintf("Failed writing component template output for %s %s/%s to %s", component.Spec, component.Dir, i.Path, i.Output))
+		if dryrun {
+			log.Info(ctx, "Dry run write template", klog.AString("path", i.Path), klog.AString("output", i.Output))
+		} else {
+			if err := kfs.WriteFile(fsys, i.Output, outbytes, 0o644); err != nil {
+				return kerrors.WithMsg(err, fmt.Sprintf("Failed writing component template output for %s %s/%s to %s", component.Spec, component.Dir, i.Path, i.Output))
+			}
+			log.Info(ctx, "Wrote template", klog.AString("path", i.Path), klog.AString("output", i.Output))
 		}
 	}
 	return nil
 }
 
 // WriteComponents writes components to an fs
-func WriteComponents(ctx context.Context, cache *Cache, fsys fs.FS, components []Component) error {
+func WriteComponents(ctx context.Context, log klog.Logger, cache *Cache, fsys fs.FS, components []Component, dryrun bool) error {
+	l := klog.NewLevelLogger(log)
 	for _, i := range components {
-		if err := writeComponent(ctx, cache, fsys, i); err != nil {
+		if err := writeComponent(ctx, l, cache, fsys, i, dryrun); err != nil {
 			return err
 		}
 	}
@@ -198,6 +206,7 @@ func WriteComponents(ctx context.Context, cache *Cache, fsys fs.FS, components [
 type (
 	// Opts holds generation opts
 	Opts struct {
+		DryRun           bool
 		NoNetwork        bool
 		ForceFetch       bool
 		RepoChecksumFile string
@@ -282,7 +291,7 @@ func Generate(ctx context.Context, log klog.Logger, output, local, cachedir, nam
 	if err != nil {
 		return err
 	}
-	if err := WriteComponents(ctx, cache, outputfs, components); err != nil {
+	if err := WriteComponents(ctx, log, cache, outputfs, components, opts.DryRun); err != nil {
 		return err
 	}
 	return nil
