@@ -9,7 +9,6 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
-	"path"
 	"path/filepath"
 	"strings"
 
@@ -24,7 +23,6 @@ type (
 	// Fetcher is a git repo fetcher
 	Fetcher struct {
 		fsys         fs.FS
-		cacheDir     string
 		log          *klog.LevelLogger
 		gitDir       string
 		gitDirPrefix string
@@ -43,7 +41,7 @@ type (
 	}
 
 	GitCmd interface {
-		GitClone(ctx context.Context, workingDir string, repodir string, repospec RepoSpec) error
+		GitClone(ctx context.Context, repodir string, repospec RepoSpec) error
 	}
 
 	// Opt is a constructor option
@@ -51,14 +49,12 @@ type (
 )
 
 // New creates a new git [*Fetcher] which is rooted at a particular file system
-func New(fsys fs.FS, cacheDir string, log klog.Logger, opts ...Opt) *Fetcher {
+func New(fsys fs.FS, log klog.Logger, opts ...Opt) *Fetcher {
 	f := &Fetcher{
 		fsys:         fsys,
-		cacheDir:     cacheDir,
 		log:          klog.NewLevelLogger(log),
 		gitDir:       ".git",
 		gitDirPrefix: ".git/",
-		gitCmd:       NewGitBin(),
 		noNetwork:    false,
 		forceFetch:   false,
 	}
@@ -70,7 +66,7 @@ func New(fsys fs.FS, cacheDir string, log klog.Logger, opts ...Opt) *Fetcher {
 
 func OptGitDir(p string) Opt {
 	return func(f *Fetcher) {
-		f.gitDir = path.Clean(p)
+		f.gitDir = p
 		f.gitDirPrefix = f.gitDir + "/"
 	}
 }
@@ -150,6 +146,9 @@ func (f *Fetcher) Fetch(ctx context.Context, spec repofetcher.RepoSpec) (fs.FS, 
 		return nil, err
 	}
 	if !cloned || f.forceFetch {
+		if f.gitCmd == nil {
+			return nil, kerrors.WithMsg(nil, "Git cmd not initialized")
+		}
 		if f.noNetwork {
 			if f.forceFetch {
 				return nil, kerrors.WithKind(nil, repofetcher.ErrNetworkRequired, "May not force fetch without network")
@@ -162,7 +161,7 @@ func (f *Fetcher) Fetch(ctx context.Context, spec repofetcher.RepoSpec) (fs.FS, 
 			}
 			f.log.Info(ctx, "Removed existing repo dir due to force fetch")
 		}
-		if err := f.gitCmd.GitClone(ctx, f.cacheDir, repodir, repospec); err != nil {
+		if err := f.gitCmd.GitClone(ctx, repodir, repospec); err != nil {
 			return nil, err
 		}
 		f.log.Info(ctx, "Cloned git repo")
@@ -173,7 +172,7 @@ func (f *Fetcher) Fetch(ctx context.Context, spec repofetcher.RepoSpec) (fs.FS, 
 	if err != nil {
 		return nil, kerrors.WithMsg(err, fmt.Sprintf("Failed to get subdirectory: %s", repodir))
 	}
-	return kfs.NewReadOnlyFS(kfs.NewMaskFS(kfs.New(rfsys, path.Join(f.cacheDir, repodir)), f.maskGitDir)), nil
+	return kfs.NewReadOnlyFS(kfs.NewMaskFS(rfsys, f.maskGitDir)), nil
 }
 
 func (f *Fetcher) maskGitDir(p string) (bool, error) {
@@ -182,21 +181,23 @@ func (f *Fetcher) maskGitDir(p string) (bool, error) {
 
 type (
 	GitBin struct {
-		bin    string
-		quiet  bool
-		Stdout io.Writer
-		Stderr io.Writer
+		cacheDir string
+		bin      string
+		quiet    bool
+		Stdout   io.Writer
+		Stderr   io.Writer
 	}
 
 	OptBin = func(b *GitBin)
 )
 
-func NewGitBin(opts ...OptBin) *GitBin {
+func NewGitBin(cacheDir string, opts ...OptBin) *GitBin {
 	b := &GitBin{
-		bin:    "git",
-		quiet:  false,
-		Stdout: os.Stderr, // send stdout to stderr for execed commands
-		Stderr: os.Stderr,
+		cacheDir: cacheDir,
+		bin:      "git",
+		quiet:    false,
+		Stdout:   os.Stderr, // send stdout to stderr for execed commands
+		Stderr:   os.Stderr,
 	}
 	for _, i := range opts {
 		i(b)
@@ -216,7 +217,7 @@ func OptBinQuiet(v bool) OptBin {
 	}
 }
 
-func (g *GitBin) GitClone(ctx context.Context, workingDir string, repodir string, repospec RepoSpec) error {
+func (g *GitBin) GitClone(ctx context.Context, repodir string, repospec RepoSpec) error {
 	args := make([]string, 0, 8)
 	args = append(args, "clone", "--single-branch")
 	if repospec.Commit != "" {
@@ -230,14 +231,14 @@ func (g *GitBin) GitClone(ctx context.Context, workingDir string, repodir string
 	args = append(args, repospec.Repo, repodir)
 	if err := g.runCmd(
 		exec.CommandContext(ctx, g.bin, args...),
-		filepath.FromSlash(workingDir),
+		filepath.FromSlash(g.cacheDir),
 	); err != nil {
 		return kerrors.WithMsg(err, fmt.Sprintf("Failed to clone repo: %s", repospec.Repo))
 	}
 	if repospec.Commit != "" {
 		if err := g.runCmd(
 			exec.CommandContext(ctx, g.bin, "switch", "--detach", repospec.Commit),
-			filepath.Join(filepath.FromSlash(workingDir), repodir),
+			filepath.Join(filepath.FromSlash(g.cacheDir), repodir),
 		); err != nil {
 			return kerrors.WithMsg(err, fmt.Sprintf("Failed to checkout commit %s for repo %s", repospec.Commit, repospec.Repo))
 		}

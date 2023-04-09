@@ -39,7 +39,7 @@ func New(fsys fs.FS, opts ...Opt) *Engine {
 	eng := &Engine{
 		vm:          jsonnet.MakeVM(),
 		strout:      false,
-		libname:     "anvil.libsonnet",
+		libname:     "anvil:std",
 		nativeFuncs: nil,
 	}
 	for _, i := range opts {

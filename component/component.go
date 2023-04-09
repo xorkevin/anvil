@@ -239,7 +239,7 @@ func parseRepoChecksumFile(name string) (map[string]string, error) {
 }
 
 // Generate reads configs and writes components to the filesystem
-func Generate(ctx context.Context, log klog.Logger, output, local, cachedir, name string, opts Opts) error {
+func Generate(ctx context.Context, log klog.Logger, output, input, cachedir string, opts Opts) error {
 	var checksums map[string]string
 	if opts.RepoChecksumFile != "" {
 		var err error
@@ -249,22 +249,19 @@ func Generate(ctx context.Context, log klog.Logger, output, local, cachedir, nam
 		}
 	}
 
-	outputfs := kfs.New(os.DirFS(filepath.FromSlash(output)), output)
-
+	local, name := path.Split(input)
 	gitdir := path.Join(cachedir, "repos", "git")
 
 	cache := NewCache(
 		repofetcher.NewCache(
 			repofetcher.Map{
-				repoKindLocalDir: localdir.New(
-					kfs.New(os.DirFS(filepath.FromSlash(local)), local),
-				),
+				repoKindLocalDir: localdir.New(kfs.DirFS(local)),
 				"git": gitfetcher.New(
-					kfs.New(os.DirFS(filepath.FromSlash(gitdir)), gitdir),
-					gitdir,
+					kfs.DirFS(gitdir),
 					log.Sublogger("gitfetcher"),
 					gitfetcher.OptGitDir(opts.GitDir),
 					gitfetcher.OptGitCmd(gitfetcher.NewGitBin(
+						gitdir,
 						gitfetcher.OptBinName(opts.GitBin),
 						gitfetcher.OptBinQuiet(opts.GitBinQuiet),
 					)),
@@ -282,6 +279,7 @@ func Generate(ctx context.Context, log klog.Logger, output, local, cachedir, nam
 			"jsonnetstr":      jsonnetengine.Builder{jsonnetengine.OptLibName(opts.JsonnetLibName), jsonnetengine.OptStrOut(true)},
 		},
 	)
+
 	components, err := ParseComponents(
 		ctx,
 		cache,
@@ -291,6 +289,8 @@ func Generate(ctx context.Context, log klog.Logger, output, local, cachedir, nam
 	if err != nil {
 		return err
 	}
+
+	outputfs := kfs.New(os.DirFS(filepath.FromSlash(output)), output)
 	if err := WriteComponents(ctx, log, cache, outputfs, components, opts.DryRun); err != nil {
 		return err
 	}

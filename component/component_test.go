@@ -35,7 +35,7 @@ func TestGenerate(t *testing.T) {
 				Fsys: fstest.MapFS{
 					"components/config.jsonnet": &fstest.MapFile{
 						Data: []byte(`
-local anvil = import 'anvil.libsonnet';
+local anvil = import 'anvil:std';
 
 local output = 'anvil_out';
 
@@ -66,7 +66,7 @@ local output = 'anvil_out';
 					},
 					"components/foo.txt": &fstest.MapFile{
 						Data: []byte(`
-local anvil = import 'anvil.libsonnet';
+local anvil = import 'anvil:std';
 local args = anvil.getArgs();
 
 @'Greetings. %(msg)s' % args
@@ -76,7 +76,7 @@ local args = anvil.getArgs();
 					},
 					"components/subcomp/config.jsonnet": &fstest.MapFile{
 						Data: []byte(`
-local anvil = import 'anvil.libsonnet';
+local anvil = import 'anvil:std';
 
 local args = anvil.getArgs();
 local output = args.output;
@@ -101,7 +101,7 @@ local output = args.output;
 					},
 					"components/subcomp/foobar.txt": &fstest.MapFile{
 						Data: []byte(`
-local anvil = import 'anvil.libsonnet';
+local anvil = import 'anvil:std';
 
 local args = anvil.getArgs();
 

@@ -11,7 +11,7 @@ require (
 	github.com/stretchr/testify v1.8.2
 	xorkevin.dev/hunter2 v0.2.5
 	xorkevin.dev/kerrors v0.1.5
-	xorkevin.dev/kfs v0.0.0-20230406072906-1fcd960dbc89
+	xorkevin.dev/kfs v0.0.0-20230408220954-ce17c84c8c51
 	xorkevin.dev/klog v0.0.0-20230408090513-cffae1892d50
 )
 

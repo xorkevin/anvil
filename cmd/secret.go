@@ -2,18 +2,21 @@ package cmd
 
 import (
 	"context"
-	"log"
 
 	"github.com/spf13/cobra"
 	"xorkevin.dev/anvil/secret/vault"
+	"xorkevin.dev/klog"
 )
 
 type (
 	secretFlags struct {
-		vaultPolicies string
-		vaultRoles    string
-		verbose       bool
-		dryRun        bool
+		vault vaultFlags
+	}
+
+	vaultFlags struct {
+		policies string
+		roles    string
+		opts     vault.Opts
 	}
 )
 
@@ -22,30 +25,45 @@ func (c *Cmd) getSecretCmd() *cobra.Command {
 		Use:               "secret",
 		Short:             "Uploads secret configs",
 		Long:              `Uploads secret configs`,
-		Run:               c.execSecretCmd,
 		DisableAutoGenTag: true,
 	}
-	secretCmd.PersistentFlags().StringVar(&c.secretFlags.vaultPolicies, "vault-policies", "", "vault secret policies")
-	secretCmd.PersistentFlags().StringVar(&c.secretFlags.vaultRoles, "vault-roles", "", "vault secret roles")
-	secretCmd.PersistentFlags().BoolVarP(&c.secretFlags.verbose, "verbose", "v", false, "verbose output")
-	secretCmd.PersistentFlags().BoolVarP(&c.secretFlags.dryRun, "dry-run", "n", false, "dry run")
+
+	vaultCmd := &cobra.Command{
+		Use:               "vault",
+		Short:             "Uploads vault configs",
+		Long:              `Uploads vault configs`,
+		Run:               c.execSecretVaultCmd,
+		DisableAutoGenTag: true,
+	}
+	vaultCmd.PersistentFlags().StringVar(&c.secretFlags.vault.policies, "policies", "", "vault secret policies")
+	vaultCmd.PersistentFlags().StringVar(&c.secretFlags.vault.roles, "roles", "", "vault secret roles")
+	vaultCmd.PersistentFlags().BoolVarP(&c.secretFlags.vault.opts.DryRun, "dry-run", "n", false, "dry run uploading policies and roles")
+	secretCmd.AddCommand(vaultCmd)
 
 	return secretCmd
 }
 
-func (c *Cmd) execSecretCmd(cmd *cobra.Command, args []string) {
-	opts := vault.Opts{
-		Verbose: c.secretFlags.verbose,
-		DryRun:  c.secretFlags.dryRun,
-	}
-	if c.secretFlags.vaultPolicies != "" {
-		if err := vault.AddPolicies(context.Background(), c.secretFlags.vaultPolicies, opts); err != nil {
-			log.Fatalln(err)
+func (c *Cmd) execSecretVaultCmd(cmd *cobra.Command, args []string) {
+	if c.secretFlags.vault.policies != "" {
+		if err := vault.AddPolicies(
+			context.Background(),
+			c.log.Logger.Sublogger("", klog.AString("cmd", "secret")),
+			c.secretFlags.vault.policies,
+			c.secretFlags.vault.opts,
+		); err != nil {
+			c.logFatal(err)
+			return
 		}
 	}
-	if c.secretFlags.vaultRoles != "" {
-		if err := vault.AddRoles(context.Background(), c.secretFlags.vaultRoles, opts); err != nil {
-			log.Fatalln(err)
+	if c.secretFlags.vault.roles != "" {
+		if err := vault.AddRoles(
+			context.Background(),
+			c.log.Logger.Sublogger("", klog.AString("cmd", "secret")),
+			c.secretFlags.vault.roles,
+			c.secretFlags.vault.opts,
+		); err != nil {
+			c.logFatal(err)
+			return
 		}
 	}
 }
