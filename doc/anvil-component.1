@@ -1,9 +1,9 @@
 .nh
-.TH "anvil" "1" "Oct 2021" "" ""
+.TH "anvil" "1" "Apr 2023" "" ""
 
 .SH NAME
 .PP
-anvil\-component \- Prints component configs
+anvil-component - Prints component configs
 
 
 .SH SYNOPSIS
@@ -18,46 +18,66 @@ Prints component configs
 
 .SH OPTIONS
 .PP
-\fB\-c\fP, \fB\-\-component\fP="component.yaml"
-	root component file
+\fB-c\fP, \fB--cache\fP=""
+	repo cache directory
 
 .PP
-\fB\-\-git\-partial\-clone\fP[=false]
-	use git partial clone for remote git components
+\fB-n\fP, \fB--dry-run\fP[=false]
+	dry run writing components
 
 .PP
-\fB\-h\fP, \fB\-\-help\fP[=false]
+\fB-f\fP, \fB--force-fetch\fP[=false]
+	force refetching repos regardless of cache
+
+.PP
+\fB--git-cmd\fP="git"
+	git cmd
+
+.PP
+\fB--git-cmd-quiet\fP[=false]
+	quiet git cmd output
+
+.PP
+\fB--git-dir\fP=".git"
+	git repo dir (.git)
+
+.PP
+\fB-h\fP, \fB--help\fP[=false]
 	help for component
 
 .PP
-\fB\-i\fP, \fB\-\-input\fP="."
-	component definition directory
+\fB-i\fP, \fB--input\fP="."
+	main component definition
 
 .PP
-\fB\-\-no\-network\fP[=false]
-	use cache only for remote components
+\fB--jsonnet-stdlib\fP="anvil:std"
+	jsonnet std lib import name
 
 .PP
-\fB\-o\fP, \fB\-\-output\fP="anvil\_out"
+\fB-m\fP, \fB--no-network\fP[=false]
+	error if the network is required
+
+.PP
+\fB-o\fP, \fB--output\fP="anvil_out"
 	generated component output directory
 
 .PP
-\fB\-p\fP, \fB\-\-patch\fP=""
-	component patch file
-
-.PP
-\fB\-r\fP, \fB\-\-remote\-cache\fP=".anvil\_remote\_cache"
-	remote component cache directory
+\fB--repo-sum\fP="anvil.sum.json"
+	checksum file
 
 
 .SH OPTIONS INHERITED FROM PARENT COMMANDS
 .PP
-\fB\-\-config\fP=""
-	config file (default is $XDG\_CONFIG\_HOME/.anvil.yaml)
+\fB--config\fP=""
+	config file (default is $XDG_CONFIG_HOME/anvil/anvil.yaml)
 
 .PP
-\fB\-\-debug\fP[=false]
-	turn on debug output
+\fB--log-json\fP[=false]
+	output json logs
+
+.PP
+\fB--log-level\fP="info"
+	log level
 
 
 .SH SEE ALSO

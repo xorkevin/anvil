@@ -6,28 +6,22 @@ Uploads secret configs
 
 Uploads secret configs
 
-```
-anvil secret [flags]
-```
-
 ### Options
 
 ```
-  -n, --dry-run                 dry run
-  -h, --help                    help for secret
-      --vault-policies string   vault secret policies
-      --vault-roles string      vault secret roles
-  -v, --verbose                 verbose output
+  -h, --help   help for secret
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --config string   config file (default is $XDG_CONFIG_HOME/.anvil.yaml)
-      --debug           turn on debug output
+      --config string      config file (default is $XDG_CONFIG_HOME/anvil/anvil.yaml)
+      --log-json           output json logs
+      --log-level string   log level (default "info")
 ```
 
 ### SEE ALSO
 
 * [anvil](anvil.md)	 - A compositional template generator
+* [anvil secret vault](anvil_secret_vault.md)	 - Uploads vault configs
 

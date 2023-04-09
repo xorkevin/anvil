@@ -1,9 +1,9 @@
 .nh
-.TH "anvil" "1" "Oct 2021" "" ""
+.TH "anvil" "1" "Apr 2023" "" ""
 
 .SH NAME
 .PP
-anvil\-doc\-man \- generate man page documentation for anvil
+anvil-doc-man - generate man page documentation for anvil
 
 
 .SH SYNOPSIS
@@ -18,24 +18,28 @@ generate man page documentation for anvil
 
 .SH OPTIONS
 .PP
-\fB\-h\fP, \fB\-\-help\fP[=false]
+\fB-h\fP, \fB--help\fP[=false]
 	help for man
 
 
 .SH OPTIONS INHERITED FROM PARENT COMMANDS
 .PP
-\fB\-\-config\fP=""
-	config file (default is $XDG\_CONFIG\_HOME/.anvil.yaml)
+\fB--config\fP=""
+	config file (default is $XDG_CONFIG_HOME/anvil/anvil.yaml)
 
 .PP
-\fB\-\-debug\fP[=false]
-	turn on debug output
+\fB--log-json\fP[=false]
+	output json logs
 
 .PP
-\fB\-o\fP, \fB\-\-output\fP="."
+\fB--log-level\fP="info"
+	log level
+
+.PP
+\fB-o\fP, \fB--output\fP="."
 	documentation output path
 
 
 .SH SEE ALSO
 .PP
-\fBanvil\-doc(1)\fP
+\fBanvil-doc(1)\fP

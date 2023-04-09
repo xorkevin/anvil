@@ -1,9 +1,9 @@
 .nh
-.TH "anvil" "1" "Oct 2021" "" ""
+.TH "anvil" "1" "Apr 2023" "" ""
 
 .SH NAME
 .PP
-anvil \- A compositional template generator
+anvil - A compositional template generator
 
 
 .SH SYNOPSIS
@@ -18,18 +18,22 @@ A compositional template generator
 
 .SH OPTIONS
 .PP
-\fB\-\-config\fP=""
-	config file (default is $XDG\_CONFIG\_HOME/.anvil.yaml)
+\fB--config\fP=""
+	config file (default is $XDG_CONFIG_HOME/anvil/anvil.yaml)
 
 .PP
-\fB\-\-debug\fP[=false]
-	turn on debug output
-
-.PP
-\fB\-h\fP, \fB\-\-help\fP[=false]
+\fB-h\fP, \fB--help\fP[=false]
 	help for anvil
+
+.PP
+\fB--log-json\fP[=false]
+	output json logs
+
+.PP
+\fB--log-level\fP="info"
+	log level
 
 
 .SH SEE ALSO
 .PP
-\fBanvil\-completion(1)\fP, \fBanvil\-component(1)\fP, \fBanvil\-doc(1)\fP, \fBanvil\-secret(1)\fP
+\fBanvil-completion(1)\fP, \fBanvil-component(1)\fP, \fBanvil-doc(1)\fP, \fBanvil-secret(1)\fP
