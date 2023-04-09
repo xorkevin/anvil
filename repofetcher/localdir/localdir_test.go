@@ -4,6 +4,7 @@ import (
 	"context"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"testing"
 
@@ -12,6 +13,7 @@ import (
 	"xorkevin.dev/hunter2/h2streamhash"
 	"xorkevin.dev/hunter2/h2streamhash/blake2bstream"
 	"xorkevin.dev/kerrors"
+	"xorkevin.dev/kfs"
 )
 
 type (
@@ -68,7 +70,7 @@ foobar
 		}
 		assert.NoError(mockSetupDir(tempCacheDir, "foo", files))
 
-		fetcher := New(os.DirFS(filepath.Join(tempCacheDir, "foo")))
+		fetcher := New(kfs.NewReadOnlyFS(kfs.DirFS(path.Join(tempCacheDir, "foo"))))
 
 		repospec, err := fetcher.Parse([]byte(`{"dir":"foo"}`))
 		assert.NoError(err)
