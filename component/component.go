@@ -255,9 +255,9 @@ func Generate(ctx context.Context, log klog.Logger, output, input, cachedir stri
 	cache := NewCache(
 		repofetcher.NewCache(
 			repofetcher.Map{
-				repoKindLocalDir: localdir.New(kfs.DirFS(local)),
+				repoKindLocalDir: localdir.New(kfs.NewReadOnlyFS(kfs.DirFS(local))),
 				"git": gitfetcher.New(
-					kfs.DirFS(gitdir),
+					kfs.NewReadOnlyFS(kfs.DirFS(gitdir)),
 					log.Sublogger("gitfetcher"),
 					gitfetcher.OptGitDir(opts.GitDir),
 					gitfetcher.OptGitCmd(gitfetcher.NewGitBin(
@@ -290,8 +290,7 @@ func Generate(ctx context.Context, log klog.Logger, output, input, cachedir stri
 		return err
 	}
 
-	outputfs := kfs.New(os.DirFS(filepath.FromSlash(output)), output)
-	if err := WriteComponents(ctx, log, cache, outputfs, components, opts.DryRun); err != nil {
+	if err := WriteComponents(ctx, log, cache, kfs.DirFS(output), components, opts.DryRun); err != nil {
 		return err
 	}
 	return nil
