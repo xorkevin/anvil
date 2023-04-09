@@ -217,7 +217,18 @@ func OptBinQuiet(v bool) OptBin {
 	}
 }
 
+func (g *GitBin) upsertCacheDir() error {
+	if err := os.MkdirAll(filepath.FromSlash(g.cacheDir), 0o777); err != nil {
+		return kerrors.WithMsg(err, fmt.Sprintf("Failed to mkdir: %s", g.cacheDir))
+	}
+	return nil
+}
+
 func (g *GitBin) GitClone(ctx context.Context, repodir string, repospec RepoSpec) error {
+	if err := g.upsertCacheDir(); err != nil {
+		return err
+	}
+
 	args := make([]string, 0, 8)
 	args = append(args, "clone", "--single-branch")
 	if repospec.Commit != "" {
