@@ -47,7 +47,7 @@ func (c *Cmd) execSecretVaultCmd(cmd *cobra.Command, args []string) {
 	if c.secretFlags.vault.policies != "" {
 		if err := vault.AddPolicies(
 			context.Background(),
-			c.log.Logger.Sublogger("", klog.AString("cmd", "secret")),
+			c.log.Logger.Sublogger("", klog.AString("cmd", "secret.vault")),
 			c.secretFlags.vault.policies,
 			c.secretFlags.vault.opts,
 		); err != nil {
@@ -58,7 +58,7 @@ func (c *Cmd) execSecretVaultCmd(cmd *cobra.Command, args []string) {
 	if c.secretFlags.vault.roles != "" {
 		if err := vault.AddRoles(
 			context.Background(),
-			c.log.Logger.Sublogger("", klog.AString("cmd", "secret")),
+			c.log.Logger.Sublogger("", klog.AString("cmd", "secret.vault")),
 			c.secretFlags.vault.roles,
 			c.secretFlags.vault.opts,
 		); err != nil {
