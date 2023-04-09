@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -55,7 +56,8 @@ func (c *Cmd) Execute() {
 	rootCmd.AddCommand(c.getDocCmd())
 
 	if err := rootCmd.Execute(); err != nil {
-		c.logFatal(err)
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 		return
 	}
 }
@@ -95,9 +97,9 @@ func (c *Cmd) initConfig(cmd *cobra.Command, args []string) {
 
 	// If a config file is found, read it in.
 	if err := viper.ReadInConfig(); err != nil {
-		c.log.WarnErr(context.Background(), kerrors.WithMsg(err, "Failed reading config"))
+		c.log.Debug(context.Background(), "Failed reading config", klog.AString("err", err.Error()))
 	} else {
-		c.log.Debug(context.Background(), "Read config", klog.AString("file", viper.ConfigFileUsed()))
+		c.log.Debug(context.Background(), "Using config", klog.AString("file", viper.ConfigFileUsed()))
 	}
 }
 

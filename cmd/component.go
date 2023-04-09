@@ -61,6 +61,8 @@ func (c *Cmd) execComponentCmd(cmd *cobra.Command, args []string) {
 	if cache == "" {
 		cache = filepath.Join(".anvil", "cache", "repo")
 	}
+	c.log.Debug(context.Background(), "Using cache dir", klog.AString("dir", cache))
+
 	if err := component.Generate(
 		context.Background(),
 		c.log.Logger.Sublogger("", klog.AString("cmd", "component")),
