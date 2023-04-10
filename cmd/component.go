@@ -63,6 +63,8 @@ func (c *Cmd) execComponentCmd(cmd *cobra.Command, args []string) {
 	}
 	c.log.Debug(context.Background(), "Using cache dir", klog.AString("dir", cache))
 
+	c.componentFlags.opts.RepoChecksumFile = filepath.ToSlash(c.componentFlags.opts.RepoChecksumFile)
+
 	if err := component.Generate(
 		context.Background(),
 		c.log.Logger.Sublogger("", klog.AString("cmd", "component")),
