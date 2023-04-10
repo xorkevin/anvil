@@ -14,7 +14,7 @@ import (
 	"xorkevin.dev/anvil/confengine"
 	"xorkevin.dev/anvil/confengine/jsonnetengine"
 	"xorkevin.dev/anvil/repofetcher"
-	gitfetcher "xorkevin.dev/anvil/repofetcher/gitfecher"
+	"xorkevin.dev/anvil/repofetcher/gitfetcher"
 	"xorkevin.dev/anvil/repofetcher/localdir"
 	"xorkevin.dev/anvil/util/kjson"
 	"xorkevin.dev/kerrors"
@@ -238,14 +238,36 @@ func parseRepoChecksumFile(name string) (map[string]string, error) {
 	return res, nil
 }
 
+func writeRepoChecksumFile(name string, repos []repofetcher.RepoChecksum) error {
+	b, err := kjson.Marshal(RepoChecksumData{
+		Repos: repos,
+	})
+	if err != nil {
+		return kerrors.WithMsg(err, "Failed to construct repo checksum data")
+	}
+	if err := os.WriteFile(filepath.FromSlash(name), b, 0o644); err != nil {
+		return kerrors.WithMsg(err, fmt.Sprintf("Failed to write repo checksum file: %s", name))
+	}
+	return nil
+}
+
 // Generate reads configs and writes components to the filesystem
 func Generate(ctx context.Context, log klog.Logger, output, input, cachedir string, opts Opts) error {
+	l := klog.NewLevelLogger(log)
+
 	var checksums map[string]string
 	if opts.RepoChecksumFile != "" {
 		var err error
 		checksums, err = parseRepoChecksumFile(opts.RepoChecksumFile)
 		if err != nil {
-			return err
+			if !errors.Is(err, fs.ErrNotExist) {
+				return err
+			}
+			// file does not exist
+			checksums = nil
+			l.Info(ctx, "Repo checksum file not found", klog.AString("file", opts.RepoChecksumFile))
+		} else {
+			l.Info(ctx, "Using existing repo checksum file", klog.AString("file", opts.RepoChecksumFile))
 		}
 	}
 
@@ -288,6 +310,17 @@ func Generate(ctx context.Context, log klog.Logger, output, input, cachedir stri
 	)
 	if err != nil {
 		return err
+	}
+
+	if opts.RepoChecksumFile != "" {
+		if opts.DryRun {
+			l.Info(ctx, "Dry run write repo sum file", klog.AString("file", opts.RepoChecksumFile))
+		} else {
+			if err := writeRepoChecksumFile(opts.RepoChecksumFile, cache.repos.Sums()); err != nil {
+				return kerrors.WithMsg(err, fmt.Sprintf("Failed writing repo sum file: %s", opts.RepoChecksumFile))
+			}
+			l.Info(ctx, "Wrote repo sum file", klog.AString("file", opts.RepoChecksumFile))
+		}
 	}
 
 	if err := WriteComponents(ctx, log, cache, kfs.DirFS(output), components, opts.DryRun); err != nil {
