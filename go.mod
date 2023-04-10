@@ -9,7 +9,7 @@ require (
 	github.com/spf13/cobra v1.7.0
 	github.com/spf13/viper v1.15.0
 	github.com/stretchr/testify v1.8.2
-	xorkevin.dev/hunter2 v0.2.5
+	xorkevin.dev/hunter2 v0.2.7
 	xorkevin.dev/kerrors v0.1.5
 	xorkevin.dev/kfs v0.1.0
 	xorkevin.dev/klog v0.0.0-20230409052311-08b959cc2a77
