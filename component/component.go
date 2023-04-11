@@ -75,7 +75,7 @@ func parseConfigFile(ctx context.Context, cache *Cache, spec repofetcher.Spec, d
 	if err != nil {
 		return nil, err
 	}
-	outbytes, err := eng.Exec(name, args)
+	outbytes, err := eng.Exec(ctx, name, args)
 	if err != nil {
 		return nil, kerrors.WithMsg(err, fmt.Sprintf("Failed executing component config %s %s/%s", spec, dir, name))
 	}
@@ -176,7 +176,7 @@ func writeComponent(ctx context.Context, log *klog.LevelLogger, cache *Cache, fs
 		if err != nil {
 			return err
 		}
-		outbytes, err := eng.Exec(i.Path, i.Args)
+		outbytes, err := eng.Exec(ctx, i.Path, i.Args)
 		if err != nil {
 			return kerrors.WithMsg(err, fmt.Sprintf("Failed executing component template %s %s/%s", component.Spec, component.Dir, i.Path))
 		}

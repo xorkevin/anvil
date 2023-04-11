@@ -1,6 +1,7 @@
 package confengine
 
 import (
+	"context"
 	"fmt"
 	"io/fs"
 
@@ -30,7 +31,7 @@ func (e errInvalidArgs) Error() string {
 type (
 	// ConfEngine is a config engine
 	ConfEngine interface {
-		Exec(name string, args map[string]any) ([]byte, error)
+		Exec(ctx context.Context, name string, args map[string]any) ([]byte, error)
 	}
 
 	// Builder builds a [ConfEngine]

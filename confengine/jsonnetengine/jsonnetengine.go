@@ -1,6 +1,7 @@
 package jsonnetengine
 
 import (
+	"context"
 	"io/fs"
 	"path"
 	"strings"
@@ -157,7 +158,7 @@ func (e *Engine) getArgs(args []any) (any, error) {
 }
 
 // Exec implements [confengine.ConfEngine] and generates config using jsonnet
-func (e *Engine) Exec(name string, args map[string]any) ([]byte, error) {
+func (e *Engine) Exec(ctx context.Context, name string, args map[string]any) ([]byte, error) {
 	if args == nil {
 		args = map[string]any{}
 	}

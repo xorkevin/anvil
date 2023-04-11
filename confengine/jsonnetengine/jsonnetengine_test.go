@@ -1,6 +1,7 @@
 package jsonnetengine
 
 import (
+	"context"
 	"encoding/json"
 	"io/fs"
 	"testing"
@@ -116,7 +117,7 @@ local vars = import '/vars.libsonnet';
 
 			eng, err := Builder{OptStrOut(tc.RawString)}.Build(tc.Fsys)
 			assert.NoError(err)
-			outbytes, err := eng.Exec(tc.Main, tc.Args)
+			outbytes, err := eng.Exec(context.Background(), tc.Main, tc.Args)
 			assert.NoError(err)
 			if tc.RawString {
 				assert.Equal(tc.Expected, string(outbytes))
