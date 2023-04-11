@@ -159,6 +159,9 @@ func (e *Engine) getArgs(args []any) (any, error) {
 
 // Exec implements [confengine.ConfEngine] and generates config using jsonnet
 func (e *Engine) Exec(ctx context.Context, name string, args map[string]any) ([]byte, error) {
+	// reset the value cache by resetting the external vars
+	e.vm.ExtReset()
+
 	if args == nil {
 		args = map[string]any{}
 	}
