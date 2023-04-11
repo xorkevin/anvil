@@ -2,6 +2,8 @@ package jsonnetengine
 
 import (
 	"context"
+	"fmt"
+	"io"
 	"io/fs"
 	"path"
 	"strings"
@@ -47,6 +49,7 @@ func New(fsys fs.FS, opts ...Opt) *Engine {
 		i(eng)
 	}
 
+	eng.vm.SetTraceOut(io.Discard)
 	eng.vm.StringOutput = eng.strout
 
 	var stdlib strings.Builder
@@ -158,10 +161,14 @@ func (e *Engine) getArgs(args []any) (any, error) {
 }
 
 // Exec implements [confengine.ConfEngine] and generates config using jsonnet
-func (e *Engine) Exec(ctx context.Context, name string, args map[string]any) ([]byte, error) {
+func (e *Engine) Exec(ctx context.Context, name string, args map[string]any, stdout io.Writer) ([]byte, error) {
 	// reset the value cache by resetting the external vars
 	e.vm.ExtReset()
 
+	if stdout == nil {
+		stdout = io.Discard
+	}
+	e.vm.SetTraceOut(stdout)
 	if args == nil {
 		args = map[string]any{}
 	}
@@ -175,33 +182,41 @@ func (e *Engine) Exec(ctx context.Context, name string, args map[string]any) ([]
 
 type (
 	fsImporter struct {
-		root     fs.FS
-		contents map[string]jsonnet.Contents
-		libname  string
-		stl      jsonnet.Contents
+		root          fs.FS
+		contentsCache map[string]*fsContents
+		libname       string
+		stl           jsonnet.Contents
+	}
+
+	fsContents struct {
+		contents jsonnet.Contents
+		err      error
 	}
 )
 
 func newFSImporter(root fs.FS, libname string, stl string) *fsImporter {
 	return &fsImporter{
-		root:     root,
-		contents: map[string]jsonnet.Contents{},
-		libname:  libname,
-		stl:      jsonnet.MakeContents(stl),
+		root:          root,
+		contentsCache: map[string]*fsContents{},
+		libname:       libname,
+		stl:           jsonnet.MakeContents(stl),
 	}
 }
 
 func (f *fsImporter) importFile(fspath string) (jsonnet.Contents, error) {
-	if c, ok := f.contents[fspath]; ok {
-		return c, nil
+	if c, ok := f.contentsCache[fspath]; ok {
+		return c.contents, c.err
 	}
+	var c jsonnet.Contents
 	b, err := fs.ReadFile(f.root, fspath)
-	if err != nil {
-		return jsonnet.Contents{}, kerrors.WithMsg(err, "Failed to read file")
+	if err == nil {
+		c = jsonnet.MakeContentsRaw(b)
 	}
-	c := jsonnet.MakeContentsRaw(b)
-	f.contents[fspath] = c
-	return c, nil
+	f.contentsCache[fspath] = &fsContents{
+		contents: c,
+		err:      err,
+	}
+	return c, err
 }
 
 // Import implements [github.com/google/go-jsonnet.Importer]
@@ -219,11 +234,11 @@ func (f *fsImporter) Import(importedFrom, importedPath string) (jsonnet.Contents
 		fspath = path.Join(path.Dir(importedFrom), importedPath)
 	}
 	if !fs.ValidPath(fspath) {
-		return jsonnet.Contents{}, "", kerrors.WithMsg(fs.ErrInvalid, "Invalid filepath")
+		return jsonnet.Contents{}, "", kerrors.WithMsg(fs.ErrInvalid, fmt.Sprintf("Invalid filepath %s from %s", importedPath, importedFrom))
 	}
 	c, err := f.importFile(fspath)
 	if err != nil {
-		return jsonnet.Contents{}, "", err
+		return jsonnet.Contents{}, "", kerrors.WithMsg(err, fmt.Sprintf("Failed to read file: %s", fspath))
 	}
 	return c, fspath, err
 }

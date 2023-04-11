@@ -15,7 +15,7 @@ type (
 	mockEngine struct{}
 )
 
-func (e mockEngine) Exec(ctx context.Context, name string, args map[string]any) ([]byte, error) {
+func (e mockEngine) Exec(ctx context.Context, name string, args map[string]any, w io.Writer) ([]byte, error) {
 	j, err := json.Marshal(args)
 	if err != nil {
 		return nil, err
@@ -61,7 +61,7 @@ func TestConfEngine(t *testing.T) {
 			}
 			eng, err := engines.Build("mockengine", nil)
 			assert.NoError(err)
-			outbytes, err := eng.Exec(context.Background(), tc.Filename, tc.Args)
+			outbytes, err := eng.Exec(context.Background(), tc.Filename, tc.Args, nil)
 			assert.NoError(err)
 			assert.True(bytes.HasPrefix(outbytes, []byte(tc.Filename+": ")))
 			outbytes = outbytes[len(tc.Filename)+2:]

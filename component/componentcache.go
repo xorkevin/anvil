@@ -83,37 +83,3 @@ func (c *Cache) Get(ctx context.Context, kind string, spec repofetcher.Spec, dir
 	c.cache[cachekey] = eng
 	return eng, nil
 }
-
-type (
-	stackSet struct {
-		set   map[string]struct{}
-		stack []string
-	}
-)
-
-func newStackSet() *stackSet {
-	return &stackSet{
-		set:   map[string]struct{}{},
-		stack: nil,
-	}
-}
-
-func (s *stackSet) Push(v string) bool {
-	if _, ok := s.set[v]; ok {
-		return false
-	}
-	s.set[v] = struct{}{}
-	s.stack = append(s.stack, v)
-	return true
-}
-
-func (s *stackSet) Pop() (string, bool) {
-	l := len(s.stack)
-	if l == 0 {
-		return "", false
-	}
-	v := s.stack[l-1]
-	s.stack = s.stack[:l-1]
-	delete(s.set, v)
-	return v, true
-}

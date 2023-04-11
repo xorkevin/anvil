@@ -17,6 +17,7 @@ import (
 	"xorkevin.dev/anvil/repofetcher/gitfetcher"
 	"xorkevin.dev/anvil/repofetcher/localdir"
 	"xorkevin.dev/anvil/util/kjson"
+	"xorkevin.dev/anvil/util/stackset"
 	"xorkevin.dev/kerrors"
 	"xorkevin.dev/kfs"
 	"xorkevin.dev/klog"
@@ -75,7 +76,7 @@ func parseConfigFile(ctx context.Context, cache *Cache, spec repofetcher.Spec, d
 	if err != nil {
 		return nil, err
 	}
-	outbytes, err := eng.Exec(ctx, name, args)
+	outbytes, err := eng.Exec(ctx, name, args, nil)
 	if err != nil {
 		return nil, kerrors.WithMsg(err, fmt.Sprintf("Failed executing component config %s %s/%s", spec, dir, name))
 	}
@@ -86,7 +87,7 @@ func parseConfigFile(ctx context.Context, cache *Cache, spec repofetcher.Spec, d
 	return config, nil
 }
 
-func parseSubcomponent(ctx context.Context, cache *Cache, ss *stackSet, spec repofetcher.Spec, dir string, data componentData) ([]Component, error) {
+func parseSubcomponent(ctx context.Context, cache *Cache, ss *stackset.StackSet[string], spec repofetcher.Spec, dir string, data componentData) ([]Component, error) {
 	var compspec repofetcher.Spec
 	var compname string
 	if data.Kind == repoKindLocalDir {
@@ -123,7 +124,7 @@ func componentKey(spec repofetcher.Spec, dir string, name string) string {
 	return s.String()
 }
 
-func parseComponentsRec(ctx context.Context, cache *Cache, ss *stackSet, spec repofetcher.Spec, name string, args map[string]any) (_ []Component, retErr error) {
+func parseComponentsRec(ctx context.Context, cache *Cache, ss *stackset.StackSet[string], spec repofetcher.Spec, name string, args map[string]any) (_ []Component, retErr error) {
 	dir, name := path.Split(name)
 	dir = path.Clean(dir)
 	name = path.Clean(name)
@@ -142,7 +143,7 @@ func parseComponentsRec(ctx context.Context, cache *Cache, ss *stackSet, spec re
 		if !ok {
 			retErr = errors.Join(retErr, kerrors.WithKind(nil, ErrImportCycle, fmt.Sprintf("Failed checking import cycle due to missing element on repo %s %s/%s", spec, dir, name)))
 		} else if v != compkey {
-			retErr = errors.Join(retErr, kerrors.WithKind(nil, ErrImportCycle, fmt.Sprintf("Failed checking import cycle due to mismatched element on repo %s %s/%s", spec, dir, name)))
+			retErr = errors.Join(retErr, kerrors.WithKind(nil, ErrImportCycle, fmt.Sprintf("Failed checking import cycle due to mismatched element on repo %s, %s", compkey, v)))
 		}
 	}()
 
@@ -165,7 +166,7 @@ func parseComponentsRec(ctx context.Context, cache *Cache, ss *stackSet, spec re
 
 // ParseComponents parses component configs to [Component]
 func ParseComponents(ctx context.Context, cache *Cache, spec repofetcher.Spec, name string) ([]Component, error) {
-	return parseComponentsRec(ctx, cache, newStackSet(), spec, name, nil)
+	return parseComponentsRec(ctx, cache, stackset.New[string](), spec, name, nil)
 }
 
 func writeComponent(ctx context.Context, log *klog.LevelLogger, cache *Cache, fsys fs.FS, component Component, dryrun bool) error {
@@ -176,7 +177,7 @@ func writeComponent(ctx context.Context, log *klog.LevelLogger, cache *Cache, fs
 		if err != nil {
 			return err
 		}
-		outbytes, err := eng.Exec(ctx, i.Path, i.Args)
+		outbytes, err := eng.Exec(ctx, i.Path, i.Args, nil)
 		if err != nil {
 			return kerrors.WithMsg(err, fmt.Sprintf("Failed executing component template %s %s/%s", component.Spec, component.Dir, i.Path))
 		}

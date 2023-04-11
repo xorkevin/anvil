@@ -3,6 +3,7 @@ package confengine
 import (
 	"context"
 	"fmt"
+	"io"
 	"io/fs"
 
 	"xorkevin.dev/kerrors"
@@ -31,7 +32,7 @@ func (e errInvalidArgs) Error() string {
 type (
 	// ConfEngine is a config engine
 	ConfEngine interface {
-		Exec(ctx context.Context, name string, args map[string]any) ([]byte, error)
+		Exec(ctx context.Context, name string, args map[string]any, stdout io.Writer) ([]byte, error)
 	}
 
 	// Builder builds a [ConfEngine]
