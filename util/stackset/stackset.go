@@ -41,3 +41,37 @@ func (s *StackSet[T]) Slice() []T {
 	copy(ret, s.stack)
 	return ret
 }
+
+type (
+	Any struct {
+		set   map[any]struct{}
+		stack []any
+	}
+)
+
+func NewAny() *Any {
+	return &Any{
+		set:   map[any]struct{}{},
+		stack: nil,
+	}
+}
+
+func (s *Any) Push(v any) bool {
+	if _, ok := s.set[v]; ok {
+		return false
+	}
+	s.set[v] = struct{}{}
+	s.stack = append(s.stack, v)
+	return true
+}
+
+func (s *Any) Pop() (any, bool) {
+	l := len(s.stack)
+	if l == 0 {
+		return nil, false
+	}
+	v := s.stack[l-1]
+	s.stack = s.stack[:l-1]
+	delete(s.set, v)
+	return v, true
+}

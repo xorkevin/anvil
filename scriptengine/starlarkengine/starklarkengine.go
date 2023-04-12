@@ -162,3 +162,95 @@ func (e *Engine) Exec(ctx context.Context, module string, fn string, args map[st
 	// TODO: convert value to any
 	return nil, nil
 }
+
+func starlarkToGoValue(x starlark.Value, ss *stackset.Any) (_ any, retErr error) {
+	switch x.(type) {
+	case starlark.IterableMapping, starlark.Iterable, starlark.HasAttrs:
+		if !ss.Push(x) {
+			return nil, kerrors.WithMsg(nil, "Cycle in starlark value")
+		}
+		defer func() {
+			if v, ok := ss.Pop(); !ok {
+				retErr = errors.Join(retErr, kerrors.WithMsg(nil, "Failed checking starlark value cycle due to missing element"))
+			} else if v != x {
+				retErr = errors.Join(retErr, kerrors.WithMsg(nil, "Failed checking starlarkr value cycle due to mismatched element"))
+			}
+		}()
+	}
+
+	switch x := x.(type) {
+	case starlark.NoneType:
+		return nil, nil
+
+	case starlark.Bool:
+		return bool(x), nil
+
+	case starlark.Int:
+		{
+			i, ok := x.Int64()
+			if !ok {
+				return nil, kerrors.WithMsg(nil, "Int out of range")
+			}
+			return int(i), nil
+		}
+
+	case starlark.Float:
+		return float64(x), nil
+
+	case starlark.String:
+		return string(x), nil
+
+	case starlark.IterableMapping:
+		{
+			v := map[string]any{}
+			for _, i := range x.Items() {
+				k, ok := i[0].(starlark.String)
+				if !ok {
+					return nil, kerrors.WithMsg(nil, "Non-string key in map")
+				}
+				vv, err := starlarkToGoValue(i[1], ss)
+				if err != nil {
+					return nil, err
+				}
+				v[string(k)] = vv
+			}
+			return v, nil
+		}
+
+	case starlark.Iterable:
+		{
+			var v []any
+			iter := x.Iterate()
+			defer iter.Done()
+			var elem starlark.Value
+			for iter.Next(&elem) {
+				vv, err := starlarkToGoValue(elem, ss)
+				if err != nil {
+					return nil, err
+				}
+				v = append(v, vv)
+			}
+			return v, nil
+		}
+
+	case starlark.HasAttrs:
+		{
+			v := map[string]any{}
+			for _, k := range x.AttrNames() {
+				a, err := x.Attr(k)
+				if err != nil {
+					return nil, kerrors.WithMsg(err, "Failed retrieving struct attr")
+				}
+				vv, err := starlarkToGoValue(a, ss)
+				if err != nil {
+					return nil, err
+				}
+				v[k] = vv
+			}
+			return v, nil
+		}
+
+	default:
+		return nil, kerrors.WithMsg(nil, "Unknown starlark type")
+	}
+}
