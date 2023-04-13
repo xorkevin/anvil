@@ -137,10 +137,7 @@ func errLoader(t *starlark.Thread, module string) (starlark.StringDict, error) {
 	return nil, ErrNoRuntimeLoad
 }
 
-func (e *Engine) Exec(ctx context.Context, module string, fn string, args map[string]any, stdout io.Writer) (map[string]any, error) {
-	if stdout == nil {
-		stdout = io.Discard
-	}
+func (e *Engine) Exec(ctx context.Context, module string, fn string, args map[string]any, stdout io.Writer) (any, error) {
 	vals, err := e.modLoader.load("", module)
 	if err != nil {
 		return nil, err
@@ -149,31 +146,43 @@ func (e *Engine) Exec(ctx context.Context, module string, fn string, args map[st
 	if !ok {
 		return nil, kerrors.WithMsg(nil, fmt.Sprintf("Global %s not defined for module %s", fn, module))
 	}
-	// TODO: check f.Type()
-	// TODO: pass arguments
-	_, err = starlark.Call(&starlark.Thread{
+	if _, ok := f.(starlark.Callable); !ok {
+		return nil, kerrors.WithMsg(nil, fmt.Sprintf("Global %s in module %s is not callable", fn, module))
+	}
+	ss := stackset.NewAny()
+	sargs, err := goToStarlarkValue(args, ss)
+	if err != nil {
+		return nil, kerrors.WithMsg(err, "Failed converting go value args to starlark values")
+	}
+	if stdout == nil {
+		stdout = io.Discard
+	}
+	sv, err := starlark.Call(&starlark.Thread{
 		Name:  module + "." + fn,
 		Print: writerPrinter{w: stdout}.print,
 		Load:  errLoader,
-	}, f, nil, nil)
+	}, f, []starlark.Value{sargs}, nil)
 	if err != nil {
 		return nil, kerrors.WithMsg(err, fmt.Sprintf("Failed executing function %s in module %s", fn, module))
 	}
-	// TODO: convert value to any
-	return nil, nil
+	v, err := starlarkToGoValue(sv, ss)
+	if err != nil {
+		return nil, kerrors.WithMsg(err, "Failed converting starlark returned values to go values")
+	}
+	return v, nil
 }
 
 func starlarkToGoValue(x starlark.Value, ss *stackset.Any) (_ any, retErr error) {
 	switch x.(type) {
 	case starlark.IterableMapping, starlark.Iterable, starlark.HasAttrs:
 		if !ss.Push(x) {
-			return nil, kerrors.WithMsg(nil, "Cycle in starlark value")
+			return nil, errors.New("Cycle in starlark value")
 		}
 		defer func() {
 			if v, ok := ss.Pop(); !ok {
-				retErr = errors.Join(retErr, kerrors.WithMsg(nil, "Failed checking starlark value cycle due to missing element"))
+				retErr = errors.Join(retErr, errors.New("Failed checking starlark value cycle due to missing element"))
 			} else if v != x {
-				retErr = errors.Join(retErr, kerrors.WithMsg(nil, "Failed checking starlark value cycle due to mismatched element"))
+				retErr = errors.Join(retErr, errors.New("Failed checking starlark value cycle due to mismatched element"))
 			}
 		}()
 	}
@@ -189,7 +198,7 @@ func starlarkToGoValue(x starlark.Value, ss *stackset.Any) (_ any, retErr error)
 		{
 			i, ok := x.Int64()
 			if !ok {
-				return nil, kerrors.WithMsg(nil, "Int out of range")
+				return nil, errors.New("Int out of range")
 			}
 			return int(i), nil
 		}
@@ -206,7 +215,7 @@ func starlarkToGoValue(x starlark.Value, ss *stackset.Any) (_ any, retErr error)
 			for _, i := range x.Items() {
 				k, ok := i[0].(starlark.String)
 				if !ok {
-					return nil, kerrors.WithMsg(nil, "Non-string key in map")
+					return nil, errors.New("Non-string key in map")
 				}
 				vv, err := starlarkToGoValue(i[1], ss)
 				if err != nil {
@@ -239,7 +248,7 @@ func starlarkToGoValue(x starlark.Value, ss *stackset.Any) (_ any, retErr error)
 			for _, k := range x.AttrNames() {
 				a, err := x.Attr(k)
 				if err != nil {
-					return nil, kerrors.WithMsg(err, "Failed retrieving struct attr")
+					return nil, fmt.Errorf("Failed retrieving struct attr: %w", err)
 				}
 				vv, err := starlarkToGoValue(a, ss)
 				if err != nil {
@@ -251,7 +260,7 @@ func starlarkToGoValue(x starlark.Value, ss *stackset.Any) (_ any, retErr error)
 		}
 
 	default:
-		return nil, kerrors.WithMsg(nil, "Unknown starlark type")
+		return nil, errors.New("Unknown starlark type")
 	}
 }
 
@@ -262,13 +271,13 @@ func goToStarlarkValue(x any, ss *stackset.Any) (_ starlark.Value, retErr error)
 	switch x.(type) {
 	case map[string]any, []any:
 		if !ss.Push(x) {
-			return nil, kerrors.WithMsg(nil, "Cycle in go value")
+			return nil, errors.New("Cycle in go value")
 		}
 		defer func() {
 			if v, ok := ss.Pop(); !ok {
-				retErr = errors.Join(retErr, kerrors.WithMsg(nil, "Failed checking go value cycle due to missing element"))
+				retErr = errors.Join(retErr, errors.New("Failed checking go value cycle due to missing element"))
 			} else if v != x {
-				retErr = errors.Join(retErr, kerrors.WithMsg(nil, "Failed checking go value cycle due to mismatched element"))
+				retErr = errors.Join(retErr, errors.New("Failed checking go value cycle due to mismatched element"))
 			}
 		}()
 	}
@@ -328,6 +337,6 @@ func goToStarlarkValue(x any, ss *stackset.Any) (_ starlark.Value, retErr error)
 			return starlark.NewList(l), nil
 		}
 	default:
-		return nil, kerrors.WithMsg(nil, "Unsupported go type")
+		return nil, errors.New("Unsupported go type")
 	}
 }
