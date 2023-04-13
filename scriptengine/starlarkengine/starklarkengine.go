@@ -173,7 +173,7 @@ func starlarkToGoValue(x starlark.Value, ss *stackset.Any) (_ any, retErr error)
 			if v, ok := ss.Pop(); !ok {
 				retErr = errors.Join(retErr, kerrors.WithMsg(nil, "Failed checking starlark value cycle due to missing element"))
 			} else if v != x {
-				retErr = errors.Join(retErr, kerrors.WithMsg(nil, "Failed checking starlarkr value cycle due to mismatched element"))
+				retErr = errors.Join(retErr, kerrors.WithMsg(nil, "Failed checking starlark value cycle due to mismatched element"))
 			}
 		}()
 	}
@@ -252,5 +252,82 @@ func starlarkToGoValue(x starlark.Value, ss *stackset.Any) (_ any, retErr error)
 
 	default:
 		return nil, kerrors.WithMsg(nil, "Unknown starlark type")
+	}
+}
+
+func goToStarlarkValue(x any, ss *stackset.Any) (_ starlark.Value, retErr error) {
+	if x == nil {
+		return starlark.None, nil
+	}
+	switch x.(type) {
+	case map[string]any, []any:
+		if !ss.Push(x) {
+			return nil, kerrors.WithMsg(nil, "Cycle in go value")
+		}
+		defer func() {
+			if v, ok := ss.Pop(); !ok {
+				retErr = errors.Join(retErr, kerrors.WithMsg(nil, "Failed checking go value cycle due to missing element"))
+			} else if v != x {
+				retErr = errors.Join(retErr, kerrors.WithMsg(nil, "Failed checking go value cycle due to mismatched element"))
+			}
+		}()
+	}
+	switch x := x.(type) {
+	case bool:
+		return starlark.Bool(x), nil
+	case int:
+		return starlark.MakeInt(x), nil
+	case int8:
+		return starlark.MakeInt(int(x)), nil
+	case int16:
+		return starlark.MakeInt(int(x)), nil
+	case int32:
+		return starlark.MakeInt(int(x)), nil
+	case int64:
+		return starlark.MakeInt64(x), nil
+	case uint:
+		return starlark.MakeUint(x), nil
+	case uint8:
+		return starlark.MakeUint(uint(x)), nil
+	case uint16:
+		return starlark.MakeUint(uint(x)), nil
+	case uint32:
+		return starlark.MakeUint(uint(x)), nil
+	case uint64:
+		return starlark.MakeUint64(x), nil
+	case uintptr:
+		return starlark.MakeUint(uint(x)), nil
+	case float32:
+		return starlark.Float(x), nil
+	case float64:
+		return starlark.Float(x), nil
+	case string:
+		return starlark.String(x), nil
+	case map[string]any:
+		{
+			d := starlark.NewDict(len(x))
+			for k, v := range x {
+				vv, err := goToStarlarkValue(v, ss)
+				if err != nil {
+					return nil, err
+				}
+				d.SetKey(starlark.String(k), vv)
+			}
+			return d, nil
+		}
+	case []any:
+		{
+			l := make([]starlark.Value, 0, len(x))
+			for _, i := range x {
+				vv, err := goToStarlarkValue(i, ss)
+				if err != nil {
+					return nil, err
+				}
+				l = append(l, vv)
+			}
+			return starlark.NewList(l), nil
+		}
+	default:
+		return nil, kerrors.WithMsg(nil, "Unsupported go type")
 	}
 }
