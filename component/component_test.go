@@ -67,7 +67,7 @@ local output = 'anvil_out';
 					"components/foo.txt": &fstest.MapFile{
 						Data: []byte(`
 local anvil = import 'anvil:std';
-local args = anvil.getArgs();
+local args = anvil.getargs();
 
 @'Greetings. %(msg)s' % args
 `),
@@ -78,7 +78,7 @@ local args = anvil.getArgs();
 						Data: []byte(`
 local anvil = import 'anvil:std';
 
-local args = anvil.getArgs();
+local args = anvil.getargs();
 local output = args.output;
 
 {
@@ -103,7 +103,7 @@ local output = args.output;
 						Data: []byte(`
 local anvil = import 'anvil:std';
 
-local args = anvil.getArgs();
+local args = anvil.getargs();
 
 @'Arg value: %(value)s' % args
 `),

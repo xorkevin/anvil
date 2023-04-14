@@ -57,8 +57,8 @@ func New(fsys fs.FS, opts ...Opt) *Engine {
 
 	for _, v := range append([]NativeFunc{
 		{
-			name:   "getArgs",
-			fn:     eng.getArgs,
+			name:   "getargs",
+			fn:     eng.getargs,
 			params: []string{},
 		},
 		{
@@ -153,9 +153,9 @@ func (b Builder) Build(fsys fs.FS) (confengine.ConfEngine, error) {
 	return New(fsys, b...), nil
 }
 
-func (e *Engine) getArgs(args []any) (any, error) {
+func (e *Engine) getargs(args []any) (any, error) {
 	if len(args) != 0 {
-		return nil, kerrors.WithKind(nil, confengine.ErrInvalidArgs, "getArgs does not take arguments")
+		return nil, kerrors.WithKind(nil, confengine.ErrInvalidArgs, "getargs does not take arguments")
 	}
 	return e.args, nil
 }

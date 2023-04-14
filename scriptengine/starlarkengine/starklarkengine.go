@@ -9,6 +9,9 @@ import (
 	"path"
 	"strings"
 
+	starjson "go.starlark.net/lib/json"
+	starmath "go.starlark.net/lib/math"
+	startime "go.starlark.net/lib/time"
 	"go.starlark.net/starlark"
 	"xorkevin.dev/anvil/util/stackset"
 	"xorkevin.dev/kerrors"
@@ -16,6 +19,7 @@ import (
 
 type (
 	Engine struct {
+		libname   string
 		modLoader *modLoader
 	}
 
@@ -28,6 +32,7 @@ type (
 		root     fs.FS
 		modCache map[string]*loadedModule
 		set      *stackset.StackSet[string]
+		universe map[string]starlark.StringDict
 	}
 
 	fromLoader struct {
@@ -41,13 +46,23 @@ type (
 )
 
 func New(fsys fs.FS) *Engine {
-	return &Engine{
-		modLoader: &modLoader{
-			root:     fsys,
-			modCache: map[string]*loadedModule{},
-			set:      stackset.New[string](),
+	eng := &Engine{
+		libname: "anvil:std",
+	}
+	eng.modLoader = &modLoader{
+		root:     fsys,
+		modCache: map[string]*loadedModule{},
+		set:      stackset.New[string](),
+		universe: map[string]starlark.StringDict{
+			eng.libname + ":json":   starjson.Module.Members,
+			eng.libname + ":math":   starmath.Module.Members,
+			eng.libname + ":time":   startime.Module.Members,
+			eng.libname:             universeLibBase{}.mod(),
+			eng.libname + ":crypto": universeLibCrypto{}.mod(),
+			eng.libname + ":vault":  universeLibVault{}.mod(),
 		},
 	}
+	return eng
 }
 
 func (w writerPrinter) print(t *starlark.Thread, msg string) {
@@ -68,6 +83,9 @@ func (e errImportCycle) Error() string {
 }
 
 func (l *modLoader) loadFile(module string) (starlark.StringDict, error) {
+	if m, ok := l.universe[module]; ok {
+		return m, nil
+	}
 	if m, ok := l.modCache[module]; ok {
 		return m.vals, m.err
 	}
