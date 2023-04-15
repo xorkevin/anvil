@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path"
@@ -72,17 +73,23 @@ type (
 	}
 )
 
-func parseConfigFile(ctx context.Context, cache *Cache, spec repofetcher.Spec, dir string, name string, args map[string]any) (*configData, error) {
+func parseConfigFile(ctx context.Context, cache *Cache, spec repofetcher.Spec, dir string, name string, args map[string]any) (_ *configData, retErr error) {
 	eng, err := cache.Get(ctx, configKindJsonnet, spec, dir)
 	if err != nil {
 		return nil, err
 	}
-	outbytes, err := eng.Exec(ctx, name, args, nil)
+	out, err := eng.Exec(ctx, name, args, nil)
 	if err != nil {
 		return nil, kerrors.WithMsg(err, fmt.Sprintf("Failed executing component config %s %s/%s", spec, dir, name))
 	}
+	defer func() {
+		if err := out.Close(); err != nil {
+			retErr = errors.Join(retErr, kerrors.WithMsg(err, fmt.Sprintf("Failed to close component config output for %s %s/%s", spec, dir, name)))
+		}
+	}()
 	config := &configData{}
-	if err := kjson.Unmarshal(outbytes, config); err != nil {
+	dec := json.NewDecoder(out)
+	if err := dec.Decode(&config); err != nil {
 		return nil, kerrors.WithMsg(err, fmt.Sprintf("Invalid output for component config %s %s/%s", spec, dir, name))
 	}
 	return config, nil
@@ -178,17 +185,36 @@ func writeComponent(ctx context.Context, log *klog.LevelLogger, cache *Cache, fs
 		if err != nil {
 			return err
 		}
-		outbytes, err := eng.Exec(ctx, i.Path, i.Args, nil)
-		if err != nil {
-			return kerrors.WithMsg(err, fmt.Sprintf("Failed executing component template %s %s/%s", component.Spec, component.Dir, i.Path))
-		}
-		if dryrun {
-			log.Info(ctx, "Dry run write template", klog.AString("path", i.Path), klog.AString("output", i.Output))
-		} else {
-			if err := kfs.WriteFile(fsys, i.Output, outbytes, 0o644); err != nil {
-				return kerrors.WithMsg(err, fmt.Sprintf("Failed writing component template output for %s %s/%s to %s", component.Spec, component.Dir, i.Path, i.Output))
+		if err := func() (retErr error) {
+			out, err := eng.Exec(ctx, i.Path, i.Args, nil)
+			if err != nil {
+				return kerrors.WithMsg(err, fmt.Sprintf("Failed executing component template %s %s/%s", component.Spec, component.Dir, i.Path))
 			}
-			log.Info(ctx, "Wrote template", klog.AString("path", i.Path), klog.AString("output", i.Output))
+			defer func() {
+				if err := out.Close(); err != nil {
+					retErr = errors.Join(retErr, kerrors.WithMsg(err, fmt.Sprintf("Failed to close component template %s %s/%s", component.Spec, component.Dir, i.Path)))
+				}
+			}()
+			if dryrun {
+				log.Info(ctx, "Dry run write template", klog.AString("path", i.Path), klog.AString("output", i.Output))
+			} else {
+				f, err := kfs.OpenFile(fsys, i.Output, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
+				if err != nil {
+					return kerrors.WithMsg(err, fmt.Sprintf("Failed opening component template output %s for %s %s/%s", i.Output, component.Spec, component.Dir, i.Path))
+				}
+				defer func() {
+					if err := f.Close(); err != nil {
+						retErr = errors.Join(retErr, kerrors.WithMsg(err, fmt.Sprintf("Failed closing component template output %s for %s %s/%s", i.Output, component.Spec, component.Dir, i.Path)))
+					}
+				}()
+				if _, err := io.Copy(f, out); err != nil {
+					return kerrors.WithMsg(err, fmt.Sprintf("Failed writing component template output %s for %s %s/%s", i.Output, component.Spec, component.Dir, i.Path))
+				}
+				log.Info(ctx, "Wrote template", klog.AString("path", i.Path), klog.AString("output", i.Output))
+			}
+			return nil
+		}(); err != nil {
+			return err
 		}
 	}
 	return nil

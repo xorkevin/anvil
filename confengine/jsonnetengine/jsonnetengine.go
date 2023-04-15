@@ -161,7 +161,7 @@ func (e *Engine) getargs(args []any) (any, error) {
 }
 
 // Exec implements [confengine.ConfEngine] and generates config using jsonnet
-func (e *Engine) Exec(ctx context.Context, name string, args map[string]any, stdout io.Writer) ([]byte, error) {
+func (e *Engine) Exec(ctx context.Context, name string, args map[string]any, stdout io.Writer) (io.ReadCloser, error) {
 	// reset the value cache by resetting the external vars
 	e.vm.ExtReset()
 
@@ -177,7 +177,7 @@ func (e *Engine) Exec(ctx context.Context, name string, args map[string]any, std
 	if err != nil {
 		return nil, kerrors.WithMsg(err, "Failed to generate jsonnet")
 	}
-	return []byte(b), nil
+	return io.NopCloser(strings.NewReader(b)), nil
 }
 
 type (

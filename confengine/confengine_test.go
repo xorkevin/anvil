@@ -15,7 +15,7 @@ type (
 	mockEngine struct{}
 )
 
-func (e mockEngine) Exec(ctx context.Context, name string, args map[string]any, w io.Writer) ([]byte, error) {
+func (e mockEngine) Exec(ctx context.Context, name string, args map[string]any, w io.Writer) (io.ReadCloser, error) {
 	j, err := json.Marshal(args)
 	if err != nil {
 		return nil, err
@@ -26,7 +26,7 @@ func (e mockEngine) Exec(ctx context.Context, name string, args map[string]any, 
 	if _, err := b.Write(j); err != nil {
 		return nil, err
 	}
-	return b.Bytes(), nil
+	return io.NopCloser(&b), nil
 }
 
 func TestConfEngine(t *testing.T) {
@@ -61,10 +61,13 @@ func TestConfEngine(t *testing.T) {
 			}
 			eng, err := engines.Build("mockengine", nil)
 			assert.NoError(err)
-			outbytes, err := eng.Exec(context.Background(), tc.Filename, tc.Args, nil)
+			outreader, err := eng.Exec(context.Background(), tc.Filename, tc.Args, nil)
 			assert.NoError(err)
-			assert.True(bytes.HasPrefix(outbytes, []byte(tc.Filename+": ")))
-			outbytes = outbytes[len(tc.Filename)+2:]
+			var b bytes.Buffer
+			_, err = io.Copy(&b, outreader)
+			assert.NoError(err)
+			assert.True(bytes.HasPrefix(b.Bytes(), []byte(tc.Filename+": ")))
+			outbytes := b.Bytes()[len(tc.Filename)+2:]
 			var out any
 			assert.NoError(json.Unmarshal(outbytes, &out))
 			assert.Equal(tc.Expected, out)

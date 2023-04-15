@@ -1,7 +1,9 @@
 package staticfile
 
 import (
+	"bytes"
 	"context"
+	"io"
 	"io/fs"
 	"testing"
 	"testing/fstest"
@@ -47,9 +49,12 @@ func TestEngine(t *testing.T) {
 
 			eng, err := Builder{}.Build(tc.Fsys)
 			assert.NoError(err)
-			outbytes, err := eng.Exec(context.Background(), tc.File, nil, nil)
+			out, err := eng.Exec(context.Background(), tc.File, nil, nil)
 			assert.NoError(err)
-			assert.Equal(tc.Expected, string(outbytes))
+			var b bytes.Buffer
+			_, err = io.Copy(&b, out)
+			assert.NoError(err)
+			assert.Equal(tc.Expected, b.String())
 		})
 	}
 }

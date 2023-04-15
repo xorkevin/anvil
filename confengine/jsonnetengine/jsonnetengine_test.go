@@ -1,8 +1,10 @@
 package jsonnetengine
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"io/fs"
 	"testing"
 	"testing/fstest"
@@ -117,13 +119,16 @@ local vars = import '/vars.libsonnet';
 
 			eng, err := Builder{OptStrOut(tc.RawString)}.Build(tc.Fsys)
 			assert.NoError(err)
-			outbytes, err := eng.Exec(context.Background(), tc.Main, tc.Args, nil)
+			out, err := eng.Exec(context.Background(), tc.Main, tc.Args, nil)
+			assert.NoError(err)
+			var b bytes.Buffer
+			_, err = io.Copy(&b, out)
 			assert.NoError(err)
 			if tc.RawString {
-				assert.Equal(tc.Expected, string(outbytes))
+				assert.Equal(tc.Expected, b.String())
 			} else {
 				var out any
-				assert.NoError(json.Unmarshal(outbytes, &out))
+				assert.NoError(json.Unmarshal(b.Bytes(), &out))
 				assert.Equal(tc.Expected, out)
 			}
 		})

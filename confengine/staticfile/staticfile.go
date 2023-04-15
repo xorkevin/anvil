@@ -32,10 +32,10 @@ func (b Builder) Build(fsys fs.FS) (confengine.ConfEngine, error) {
 }
 
 // Exec implements [confengine.ConfEngine] and copies static file configs
-func (e *Engine) Exec(ctx context.Context, name string, args map[string]any, stdout io.Writer) ([]byte, error) {
-	b, err := fs.ReadFile(e.fsys, name)
+func (e *Engine) Exec(ctx context.Context, name string, args map[string]any, stdout io.Writer) (io.ReadCloser, error) {
+	f, err := e.fsys.Open(name)
 	if err != nil {
-		return nil, kerrors.WithMsg(err, fmt.Sprintf("Failed to read file: %s", name))
+		return nil, kerrors.WithMsg(err, fmt.Sprintf("Failed to open file: %s", name))
 	}
-	return b, nil
+	return f, nil
 }
