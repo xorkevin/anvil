@@ -95,7 +95,6 @@ func (l *modLoader) loadFile(module string) (starlark.StringDict, error) {
 		if !l.set.Push(module) {
 			err = fmt.Errorf("%w: Import cycle on module: %s -> %s", ErrImportCycle, strings.Join(l.set.Slice(), ","), module)
 		} else {
-			// TODO: add predeclared globals
 			vals, err = starlark.ExecFile(&starlark.Thread{
 				Name:  module,
 				Print: discardPrinter,

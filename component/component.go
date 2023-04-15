@@ -13,6 +13,7 @@ import (
 
 	"xorkevin.dev/anvil/confengine"
 	"xorkevin.dev/anvil/confengine/jsonnetengine"
+	"xorkevin.dev/anvil/confengine/staticfile"
 	"xorkevin.dev/anvil/repofetcher"
 	"xorkevin.dev/anvil/repofetcher/gitfetcher"
 	"xorkevin.dev/anvil/repofetcher/localdir"
@@ -300,6 +301,7 @@ func Generate(ctx context.Context, log klog.Logger, output, input, cachedir stri
 		confengine.Map{
 			configKindJsonnet: jsonnetengine.Builder{jsonnetengine.OptLibName(opts.JsonnetLibName)},
 			"jsonnetstr":      jsonnetengine.Builder{jsonnetengine.OptLibName(opts.JsonnetLibName), jsonnetengine.OptStrOut(true)},
+			"staticfile":      staticfile.Builder{},
 		},
 	)
 
