@@ -19,8 +19,7 @@ import (
 type (
 	// Engine is a jsonnet config engine
 	Engine struct {
-		vm          *jsonnet.VM
-		args        map[string]any
+		fsys        fs.FS
 		strout      bool
 		libname     string
 		nativeFuncs []NativeFunc
@@ -40,7 +39,7 @@ type (
 // New creates a new [*Engine] which is rooted at a particular file system
 func New(fsys fs.FS, opts ...Opt) *Engine {
 	eng := &Engine{
-		vm:          jsonnet.MakeVM(),
+		fsys:        fsys,
 		strout:      false,
 		libname:     "anvil:std",
 		nativeFuncs: nil,
@@ -48,82 +47,6 @@ func New(fsys fs.FS, opts ...Opt) *Engine {
 	for _, i := range opts {
 		i(eng)
 	}
-
-	eng.vm.SetTraceOut(io.Discard)
-	eng.vm.StringOutput = eng.strout
-
-	var stdlib strings.Builder
-	stdlib.WriteString("{\n")
-
-	for _, v := range append([]NativeFunc{
-		{
-			name:   "getargs",
-			fn:     eng.getargs,
-			params: []string{},
-		},
-		{
-			name: "jsonMarshal",
-			fn: func(args []any) (any, error) {
-				if len(args) != 1 {
-					return nil, kerrors.WithKind(nil, confengine.ErrInvalidArgs, "jsonMarshal needs 1 argument")
-				}
-				b, err := kjson.Marshal(args[0])
-				if err != nil {
-					return nil, kerrors.WithMsg(err, "Failed to marshal json")
-				}
-				return string(b), nil
-			},
-			params: []string{"v"},
-		},
-		{
-			name: "jsonMergePatch",
-			fn: func(args []any) (any, error) {
-				if len(args) != 2 {
-					return nil, kerrors.WithKind(nil, confengine.ErrInvalidArgs, "jsonMergePatch needs 2 arguments")
-				}
-				return kjson.MergePatch(args[0], args[1]), nil
-			},
-			params: []string{"a", "b"},
-		},
-		{
-			name: "pathJoin",
-			fn: func(args []any) (any, error) {
-				if len(args) != 1 {
-					return nil, kerrors.WithKind(nil, confengine.ErrInvalidArgs, "pathJoin needs 1 argument")
-				}
-				var segments []string
-				if err := mapstructure.Decode(args[0], &segments); err != nil {
-					return nil, kerrors.WithKind(err, confengine.ErrInvalidArgs, "Failed to decode path segments")
-				}
-				return path.Join(segments...), nil
-			},
-			params: []string{"v"},
-		},
-	}, eng.nativeFuncs...) {
-		params := make(ast.Identifiers, 0, len(v.params))
-		for _, i := range v.params {
-			params = append(params, ast.Identifier(i))
-		}
-		eng.vm.NativeFunction(&jsonnet.NativeFunction{
-			Name:   v.name,
-			Func:   v.fn,
-			Params: params,
-		})
-		paramstr := ""
-		if len(v.params) > 0 {
-			paramstr = strings.Join(v.params, ", ")
-		}
-		stdlib.WriteString(v.name)
-		stdlib.WriteString("(")
-		stdlib.WriteString(paramstr)
-		stdlib.WriteString(`):: std.native("`)
-		stdlib.WriteString(v.name)
-		stdlib.WriteString(`")(`)
-		stdlib.WriteString(paramstr)
-		stdlib.WriteString("),\n")
-	}
-	stdlib.WriteString("}\n")
-	eng.vm.Importer(newFSImporter(fsys, eng.libname, stdlib.String()))
 	return eng
 }
 
@@ -153,29 +76,131 @@ func (b Builder) Build(fsys fs.FS) (confengine.ConfEngine, error) {
 	return New(fsys, b...), nil
 }
 
-func (e *Engine) getargs(args []any) (any, error) {
+type (
+	confArgs struct {
+		args map[string]any
+	}
+)
+
+func (a confArgs) getargs(args []any) (any, error) {
 	if len(args) != 0 {
 		return nil, kerrors.WithKind(nil, confengine.ErrInvalidArgs, "getargs does not take arguments")
 	}
-	return e.args, nil
+	return a.args, nil
+}
+
+func (e *Engine) buildVM(args map[string]any, stdout io.Writer) *jsonnet.VM {
+	if args == nil {
+		args = map[string]any{}
+	}
+	if stdout == nil {
+		stdout = io.Discard
+	}
+
+	vm := jsonnet.MakeVM()
+	vm.SetTraceOut(stdout)
+	vm.StringOutput = e.strout
+
+	var stdlib strings.Builder
+	stdlib.WriteString("{\n")
+
+	for _, v := range append([]NativeFunc{
+		{
+			name:   "getargs",
+			fn:     confArgs{args: args}.getargs,
+			params: []string{},
+		},
+		{
+			name: "jsonMarshal",
+			fn: func(args []any) (any, error) {
+				if len(args) != 1 {
+					return nil, fmt.Errorf("%w: jsonMarshal needs 1 argument", confengine.ErrInvalidArgs)
+				}
+				b, err := kjson.Marshal(args[0])
+				if err != nil {
+					return nil, fmt.Errorf("Failed to marshal json: %w", err)
+				}
+				return string(b), nil
+			},
+			params: []string{"v"},
+		},
+		{
+			name: "jsonUnmarshal",
+			fn: func(args []any) (any, error) {
+				if len(args) != 1 {
+					return nil, fmt.Errorf("%w: jsonUnmarshal needs 1 argument", confengine.ErrInvalidArgs)
+				}
+				a, ok := args[0].(string)
+				if !ok {
+					return nil, fmt.Errorf("%w: Failed to decode arg as string", confengine.ErrInvalidArgs)
+				}
+				var v any
+				if err := kjson.Unmarshal([]byte(a), &v); err != nil {
+					return nil, fmt.Errorf("Failed to unmarshal json: %w", err)
+				}
+				return v, nil
+			},
+			params: []string{"v"},
+		},
+		{
+			name: "jsonMergePatch",
+			fn: func(args []any) (any, error) {
+				if len(args) != 2 {
+					return nil, fmt.Errorf("%w: jsonMergePatch needs 2 arguments", confengine.ErrInvalidArgs)
+				}
+				return kjson.MergePatch(args[0], args[1]), nil
+			},
+			params: []string{"a", "b"},
+		},
+		{
+			name: "pathJoin",
+			fn: func(args []any) (any, error) {
+				if len(args) != 1 {
+					return nil, fmt.Errorf("%w: pathJoin needs 1 argument", confengine.ErrInvalidArgs)
+				}
+				var segments []string
+				if err := mapstructure.Decode(args[0], &segments); err != nil {
+					return nil, fmt.Errorf("%w: Failed to decode path segments: %w", confengine.ErrInvalidArgs, err)
+				}
+				return path.Join(segments...), nil
+			},
+			params: []string{"v"},
+		},
+	}, e.nativeFuncs...) {
+		paramstr := ""
+		var params ast.Identifiers
+		if len(v.params) > 0 {
+			paramstr = strings.Join(v.params, ", ")
+			params = make(ast.Identifiers, 0, len(v.params))
+			for _, i := range v.params {
+				params = append(params, ast.Identifier(i))
+			}
+		}
+		vm.NativeFunction(&jsonnet.NativeFunction{
+			Name:   v.name,
+			Func:   v.fn,
+			Params: params,
+		})
+		stdlib.WriteString(v.name)
+		stdlib.WriteString("(")
+		stdlib.WriteString(paramstr)
+		stdlib.WriteString(`):: std.native("`)
+		stdlib.WriteString(v.name)
+		stdlib.WriteString(`")(`)
+		stdlib.WriteString(paramstr)
+		stdlib.WriteString("),\n")
+	}
+	stdlib.WriteString("}\n")
+	vm.Importer(newFSImporter(e.fsys, e.libname, stdlib.String()))
+	return vm
 }
 
 // Exec implements [confengine.ConfEngine] and generates config using jsonnet
 func (e *Engine) Exec(ctx context.Context, name string, args map[string]any, stdout io.Writer) (io.ReadCloser, error) {
-	// reset the value cache by resetting the external vars
-	e.vm.ExtReset()
-
-	if stdout == nil {
-		stdout = io.Discard
-	}
-	e.vm.SetTraceOut(stdout)
-	if args == nil {
-		args = map[string]any{}
-	}
-	e.args = args
-	b, err := e.vm.EvaluateFile(name)
+	vm := e.buildVM(args, stdout)
+	b, err := vm.EvaluateFile(name)
 	if err != nil {
-		return nil, kerrors.WithMsg(err, "Failed to generate jsonnet")
+		return nil, kerrors.WithMsg(err, "Failed to execute jsonnet")
 	}
 	return io.NopCloser(strings.NewReader(b)), nil
 }
