@@ -14,6 +14,7 @@ import (
 	startime "go.starlark.net/lib/time"
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
+	"xorkevin.dev/anvil/scriptengine"
 	"xorkevin.dev/anvil/util/stackset"
 	"xorkevin.dev/kerrors"
 )
@@ -71,6 +72,14 @@ func New(fsys fs.FS) *Engine {
 	return eng
 }
 
+type (
+	Builder struct{}
+)
+
+func (b Builder) Build(fsys fs.FS) (scriptengine.ScriptEngine, error) {
+	return New(fsys), nil
+}
+
 func (w writerPrinter) print(t *starlark.Thread, msg string) {
 	fmt.Fprintln(w.w, msg)
 }
@@ -125,18 +134,18 @@ func (l *modLoader) loadFile(module string) (starlark.StringDict, error) {
 }
 
 func (l *modLoader) load(from, module string) (starlark.StringDict, error) {
-	var fspath string
+	var name string
 	if path.IsAbs(module) {
-		fspath = path.Clean(module[1:])
+		name = path.Clean(module[1:])
 	} else {
-		fspath = path.Join(path.Dir(from), module)
+		name = path.Join(path.Dir(from), module)
 	}
-	if !fs.ValidPath(fspath) {
-		return nil, kerrors.WithMsg(fs.ErrInvalid, fmt.Sprintf("Invalid filepath %s from %s", module, from))
+	if !fs.ValidPath(name) {
+		return nil, fmt.Errorf("%w: Invalid filepath %s from %s", fs.ErrInvalid, module, from)
 	}
-	vals, err := l.loadFile(fspath)
+	vals, err := l.loadFile(name)
 	if err != nil {
-		return nil, kerrors.WithMsg(err, fmt.Sprintf("Failed to read module: %s", fspath))
+		return nil, fmt.Errorf("Failed to read module %s: %w", name, err)
 	}
 	return vals, nil
 }
@@ -160,17 +169,17 @@ func errLoader(t *starlark.Thread, module string) (starlark.StringDict, error) {
 	return nil, ErrNoRuntimeLoad
 }
 
-func (e *Engine) Exec(ctx context.Context, module string, fn string, args map[string]any, stdout io.Writer) (any, error) {
-	vals, err := e.modLoader.load("", module)
+func (e *Engine) Exec(ctx context.Context, name string, fn string, args map[string]any, stdout io.Writer) (any, error) {
+	vals, err := e.modLoader.load("", name)
 	if err != nil {
 		return nil, err
 	}
 	f, ok := vals[fn]
 	if !ok {
-		return nil, kerrors.WithMsg(nil, fmt.Sprintf("Global %s not defined for module %s", fn, module))
+		return nil, kerrors.WithMsg(nil, fmt.Sprintf("Global %s not defined for module %s", fn, name))
 	}
 	if _, ok := f.(starlark.Callable); !ok {
-		return nil, kerrors.WithMsg(nil, fmt.Sprintf("Global %s in module %s is not callable", fn, module))
+		return nil, kerrors.WithMsg(nil, fmt.Sprintf("Global %s in module %s is not callable", fn, name))
 	}
 	ss := stackset.NewAny()
 	sargs, err := goToStarlarkValue(args, ss)
@@ -181,12 +190,12 @@ func (e *Engine) Exec(ctx context.Context, module string, fn string, args map[st
 		stdout = io.Discard
 	}
 	sv, err := starlark.Call(&starlark.Thread{
-		Name:  module + "." + fn,
+		Name:  name + "." + fn,
 		Print: writerPrinter{w: stdout}.print,
 		Load:  errLoader,
 	}, f, []starlark.Value{sargs}, nil)
 	if err != nil {
-		return nil, kerrors.WithMsg(err, fmt.Sprintf("Failed executing function %s in module %s", fn, module))
+		return nil, kerrors.WithMsg(err, fmt.Sprintf("Failed executing function %s in module %s", fn, name))
 	}
 	v, err := starlarkToGoValue(sv, ss)
 	if err != nil {
