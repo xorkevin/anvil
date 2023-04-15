@@ -99,14 +99,17 @@ type (
 		token     string
 		kubemount string
 		kvmount   string
+		dbmount   string
 	}
 )
 
 func (l universeLibVault) mod() starlark.StringDict {
 	return starlark.StringDict{
-		"authkube": starlark.NewBuiltin("authkube", l.authkube),
-		"kvput":    starlark.NewBuiltin("kvput", l.kvput),
-		"kvget":    starlark.NewBuiltin("kvget", l.kvget),
+		"authkube":    starlark.NewBuiltin("authkube", l.authkube),
+		"kvput":       starlark.NewBuiltin("kvput", l.kvput),
+		"kvget":       starlark.NewBuiltin("kvget", l.kvget),
+		"dbconfigput": starlark.NewBuiltin("dbconfigput", l.dbconfigput),
+		"dbroleput":   starlark.NewBuiltin("dbroleput", l.dbroleput),
 	}
 }
 
@@ -156,6 +159,16 @@ func (l universeLibVault) readVaultCfg(vaultcfg *starlark.Dict) (*vaultCfg, erro
 			return nil, errors.New("Invalid vault kv mount")
 		}
 		cfg.kvmount = kvmount
+	}
+
+	if sdbmount, ok, err := vaultcfg.Get(starlark.String("dbmount")); err != nil {
+		return nil, fmt.Errorf("Failed getting vault db mount: %w", err)
+	} else if ok {
+		dbmount, ok := starlark.AsString(sdbmount)
+		if !ok || dbmount == "" {
+			return nil, errors.New("Invalid vault db mount")
+		}
+		cfg.dbmount = dbmount
 	}
 
 	return cfg, nil
@@ -212,20 +225,23 @@ func (l universeLibVault) authkube(t *starlark.Thread, _ *starlark.Builtin, args
 	return starlark.String(res.Auth.ClientToken), nil
 }
 
-func (l universeLibVault) doVaultReq(name string, cfg *vaultCfg, method string, path string, body any, res any) (bool, error) {
+func (l universeLibVault) doVaultReq(name string, cfg *vaultCfg, method string, path string, body any, res any) error {
 	if cfg.token == "" {
-		return false, errors.New("Missing vault token")
+		return errors.New("Missing vault token")
 	}
 	req, err := l.httpClient.ReqJSON(http.MethodPost, fmt.Sprintf("%s/%s", cfg.addr, path), body)
 	if err != nil {
-		return false, fmt.Errorf("Failed creating vault %s request: %w", name, err)
+		return fmt.Errorf("Failed creating vault %s request: %w", name, err)
 	}
 	req.Header.Set("X-Vault-Token", cfg.token)
 	_, decoded, err := l.httpClient.DoJSON(context.Background(), req, res)
 	if err != nil {
-		return false, fmt.Errorf("Failed making vault %s request: %w", name, err)
+		return fmt.Errorf("Failed making vault %s request: %w", name, err)
 	}
-	return decoded, nil
+	if !decoded {
+		return fmt.Errorf("No vault %s response", name)
+	}
+	return nil
 }
 
 func (l universeLibVault) kvput(t *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
@@ -271,8 +287,7 @@ func (l universeLibVault) kvput(t *starlark.Thread, _ *starlark.Builtin, args st
 			Version int `json:"version"`
 		} `json:"data"`
 	}
-	_, err = l.doVaultReq("kv put", cfg, http.MethodPost, fmt.Sprintf("v1/%s/data/%s", cfg.kvmount, key), body, &res)
-	if err != nil {
+	if err := l.doVaultReq("kv put", cfg, http.MethodPost, fmt.Sprintf("v1/%s/data/%s", cfg.kvmount, key), body, &res); err != nil {
 		return nil, err
 	}
 	if res.Data.Version < 1 {
@@ -308,12 +323,8 @@ func (l universeLibVault) kvget(t *starlark.Thread, _ *starlark.Builtin, args st
 			} `json:"metadata"`
 		} `json:"data"`
 	}
-	decoded, err := l.doVaultReq("kv get", cfg, http.MethodGet, fmt.Sprintf("v1/%s/data/%s", cfg.kvmount, key), nil, &res)
-	if err != nil {
+	if err := l.doVaultReq("kv get", cfg, http.MethodGet, fmt.Sprintf("v1/%s/data/%s", cfg.kvmount, key), nil, &res); err != nil {
 		return nil, err
-	}
-	if !decoded {
-		return nil, errors.New("No vault kv get response")
 	}
 	data, err := goToStarlarkValue(res.Data.Data, stackset.NewAny())
 	if err != nil {
@@ -323,4 +334,70 @@ func (l universeLibVault) kvget(t *starlark.Thread, _ *starlark.Builtin, args st
 	retData.SetKey(starlark.String("version"), starlark.MakeInt(res.Data.Metadata.Version))
 	retData.SetKey(starlark.String("data"), data)
 	return retData, nil
+}
+
+func (l universeLibVault) dbconfigput(t *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	var name string
+	var dbcfg *starlark.Dict
+	var vaultcfg *starlark.Dict
+	if err := starlark.UnpackArgs("dbconfigput", args, kwargs, "name", &name, "dbcfg", &dbcfg, "vaultcfg", &vaultcfg); err != nil {
+		return nil, fmt.Errorf("Invalid args: %w", err)
+	}
+	if name == "" {
+		return nil, errors.New("Empty name")
+	}
+	if dbcfg == nil {
+		return nil, errors.New("Missing db cfg")
+	}
+
+	body, err := starlarkToGoValue(dbcfg, stackset.NewAny())
+	if err != nil {
+		return nil, fmt.Errorf("Failed converting vault db cfg value: %w", err)
+	}
+
+	cfg, err := l.readVaultCfg(vaultcfg)
+	if err != nil {
+		return nil, err
+	}
+	if cfg.dbmount == "" {
+		return nil, errors.New("Missing vault db mount")
+	}
+	var res any
+	if err := l.doVaultReq("db cfg put", cfg, http.MethodPost, fmt.Sprintf("v1/%s/config/%s", cfg.dbmount, name), body, &res); err != nil {
+		return nil, err
+	}
+	return nil, nil
+}
+
+func (l universeLibVault) dbroleput(t *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	var name string
+	var role *starlark.Dict
+	var vaultcfg *starlark.Dict
+	if err := starlark.UnpackArgs("dbroleput", args, kwargs, "name", &name, "role", &role, "vaultcfg", &vaultcfg); err != nil {
+		return nil, fmt.Errorf("Invalid args: %w", err)
+	}
+	if name == "" {
+		return nil, errors.New("Empty name")
+	}
+	if role == nil {
+		return nil, errors.New("Missing db role")
+	}
+
+	body, err := starlarkToGoValue(role, stackset.NewAny())
+	if err != nil {
+		return nil, fmt.Errorf("Failed converting vault db role value: %w", err)
+	}
+
+	cfg, err := l.readVaultCfg(vaultcfg)
+	if err != nil {
+		return nil, err
+	}
+	if cfg.dbmount == "" {
+		return nil, errors.New("Missing vault db mount")
+	}
+	var res any
+	if err := l.doVaultReq("db role put", cfg, http.MethodPost, fmt.Sprintf("v1/%s/roles/%s", cfg.dbmount, name), body, &res); err != nil {
+		return nil, err
+	}
+	return nil, nil
 }
