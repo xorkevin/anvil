@@ -28,7 +28,7 @@ func (l universeLibBase) mod() starlark.StringDict {
 
 func (l universeLibBase) getenv(t *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	var name string
-	if err := starlark.UnpackArgs("genpass", args, kwargs, "name", &name); err != nil {
+	if err := starlark.UnpackArgs("getenv", args, kwargs, "name", &name); err != nil {
 		return nil, fmt.Errorf("Invalid args: %w", err)
 	}
 	v, ok := os.LookupEnv(name)
@@ -105,6 +105,8 @@ type (
 func (l universeLibVault) mod() starlark.StringDict {
 	return starlark.StringDict{
 		"authkube": starlark.NewBuiltin("authkube", l.authkube),
+		"kvput":    starlark.NewBuiltin("kvput", l.kvput),
+		"kvget":    starlark.NewBuiltin("kvget", l.kvget),
 	}
 }
 
@@ -210,12 +212,28 @@ func (l universeLibVault) authkube(t *starlark.Thread, _ *starlark.Builtin, args
 	return starlark.String(res.Auth.ClientToken), nil
 }
 
+func (l universeLibVault) doVaultReq(name string, cfg *vaultCfg, method string, path string, body any, res any) (bool, error) {
+	if cfg.token == "" {
+		return false, errors.New("Missing vault token")
+	}
+	req, err := l.httpClient.ReqJSON(http.MethodPost, fmt.Sprintf("%s/%s", cfg.addr, path), body)
+	if err != nil {
+		return false, fmt.Errorf("Failed creating vault %s request: %w", name, err)
+	}
+	req.Header.Set("X-Vault-Token", cfg.token)
+	_, decoded, err := l.httpClient.DoJSON(context.Background(), req, res)
+	if err != nil {
+		return false, fmt.Errorf("Failed making vault %s request: %w", name, err)
+	}
+	return decoded, nil
+}
+
 func (l universeLibVault) kvput(t *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	var key string
 	var value starlark.Value
 	var vaultcfg *starlark.Dict
 	cas := -1
-	if err := starlark.UnpackArgs("authkube", args, kwargs, "key", &key, "value", &value, "vaultcfg", &vaultcfg, "cas?", &cas); err != nil {
+	if err := starlark.UnpackArgs("kvput", args, kwargs, "key", &key, "value", &value, "vaultcfg", &vaultcfg, "cas?", &cas); err != nil {
 		return nil, fmt.Errorf("Invalid args: %w", err)
 	}
 	if key == "" {
@@ -227,15 +245,12 @@ func (l universeLibVault) kvput(t *starlark.Thread, _ *starlark.Builtin, args st
 
 	gvalue, err := starlarkToGoValue(value, stackset.NewAny())
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Failed converting vault kv value: %w", err)
 	}
 
 	cfg, err := l.readVaultCfg(vaultcfg)
 	if err != nil {
 		return nil, err
-	}
-	if cfg.token == "" {
-		return nil, errors.New("Missing vault token")
 	}
 	if cfg.kvmount == "" {
 		return nil, errors.New("Missing vault kv mount")
@@ -251,24 +266,61 @@ func (l universeLibVault) kvput(t *starlark.Thread, _ *starlark.Builtin, args st
 	if cas >= 0 {
 		body.Options.CAS = &cas
 	}
-	req, err := l.httpClient.ReqJSON(http.MethodPost, fmt.Sprintf("%s/v1/%s/data/%s", cfg.addr, cfg.kvmount, key), body)
-	if err != nil {
-		return nil, fmt.Errorf("Failed creating vault kv put request: %w", err)
-	}
-	req.Header.Set("X-Vault-Token", cfg.token)
 	var res struct {
 		Data struct {
 			Version int `json:"version"`
 		} `json:"data"`
 	}
-	_, _, err = l.httpClient.DoJSON(context.Background(), req, &res)
+	_, err = l.doVaultReq("kv put", cfg, http.MethodPost, fmt.Sprintf("v1/%s/data/%s", cfg.kvmount, key), body, &res)
 	if err != nil {
-		return nil, fmt.Errorf("Failed making vault kv put request: %w", err)
+		return nil, err
 	}
 	if res.Data.Version < 1 {
 		return nil, errors.New("No vault secret version")
 	}
 	retData := starlark.NewDict(1)
 	retData.SetKey(starlark.String("version"), starlark.MakeInt(res.Data.Version))
+	return retData, nil
+}
+
+func (l universeLibVault) kvget(t *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	var key string
+	var vaultcfg *starlark.Dict
+	if err := starlark.UnpackArgs("kvget", args, kwargs, "key", &key, "vaultcfg", &vaultcfg); err != nil {
+		return nil, fmt.Errorf("Invalid args: %w", err)
+	}
+	if key == "" {
+		return nil, errors.New("Empty key")
+	}
+
+	cfg, err := l.readVaultCfg(vaultcfg)
+	if err != nil {
+		return nil, err
+	}
+	if cfg.kvmount == "" {
+		return nil, errors.New("Missing vault kv mount")
+	}
+	var res struct {
+		Data struct {
+			Data     any `json:"data"`
+			Metadata struct {
+				Version int `json:"version"`
+			} `json:"metadata"`
+		} `json:"data"`
+	}
+	decoded, err := l.doVaultReq("kv get", cfg, http.MethodGet, fmt.Sprintf("v1/%s/data/%s", cfg.kvmount, key), nil, &res)
+	if err != nil {
+		return nil, err
+	}
+	if !decoded {
+		return nil, errors.New("No vault kv get response")
+	}
+	data, err := goToStarlarkValue(res.Data.Data, stackset.NewAny())
+	if err != nil {
+		return nil, fmt.Errorf("Failed converting vault kv response: %w", err)
+	}
+	retData := starlark.NewDict(2)
+	retData.SetKey(starlark.String("version"), starlark.MakeInt(res.Data.Metadata.Version))
+	retData.SetKey(starlark.String("data"), data)
 	return retData, nil
 }
