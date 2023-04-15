@@ -250,20 +250,20 @@ func (f *fsImporter) Import(importedFrom, importedPath string) (jsonnet.Contents
 		return f.stl, f.libname, nil
 	}
 
-	var fspath string
+	var name string
 	if path.IsAbs(importedPath) {
 		// make absolute paths relative to the root fs
-		fspath = path.Clean(importedPath[1:])
+		name = path.Clean(importedPath[1:])
 	} else {
 		// paths are otherwise relative to the file importing them
-		fspath = path.Join(path.Dir(importedFrom), importedPath)
+		name = path.Join(path.Dir(importedFrom), importedPath)
 	}
-	if !fs.ValidPath(fspath) {
-		return jsonnet.Contents{}, "", kerrors.WithMsg(fs.ErrInvalid, fmt.Sprintf("Invalid filepath %s from %s", importedPath, importedFrom))
+	if !fs.ValidPath(name) {
+		return jsonnet.Contents{}, "", fmt.Errorf("%w: Invalid filepath %s from %s", fs.ErrInvalid, importedPath, importedFrom)
 	}
-	c, err := f.importFile(fspath)
+	c, err := f.importFile(name)
 	if err != nil {
-		return jsonnet.Contents{}, "", kerrors.WithMsg(err, fmt.Sprintf("Failed to read file: %s", fspath))
+		return jsonnet.Contents{}, "", fmt.Errorf("Failed to read file %s: %w", name, err)
 	}
-	return c, fspath, err
+	return c, name, err
 }

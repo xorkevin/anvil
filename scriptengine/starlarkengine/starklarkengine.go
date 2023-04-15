@@ -13,6 +13,7 @@ import (
 	starmath "go.starlark.net/lib/math"
 	startime "go.starlark.net/lib/time"
 	"go.starlark.net/starlark"
+	"go.starlark.net/starlarkstruct"
 	"xorkevin.dev/anvil/util/stackset"
 	"xorkevin.dev/kerrors"
 )
@@ -33,6 +34,7 @@ type (
 		modCache map[string]*loadedModule
 		set      *stackset.StackSet[string]
 		universe map[string]starlark.StringDict
+		globals  starlark.StringDict
 	}
 
 	fromLoader struct {
@@ -60,6 +62,10 @@ func New(fsys fs.FS) *Engine {
 			eng.libname:             universeLibBase{}.mod(),
 			eng.libname + ":crypto": universeLibCrypto{}.mod(),
 			eng.libname + ":vault":  universeLibVault{}.mod(),
+		},
+		globals: starlark.StringDict{
+			"struct": starlark.NewBuiltin("struct", starlarkstruct.Make),
+			"module": starlark.NewBuiltin("module", starlarkstruct.MakeModule),
 		},
 	}
 	return eng
@@ -99,7 +105,7 @@ func (l *modLoader) loadFile(module string) (starlark.StringDict, error) {
 				Name:  module,
 				Print: discardPrinter,
 				Load:  fromLoader{l: l, from: module}.load,
-			}, module, b, nil)
+			}, module, b, l.globals)
 			v, ok := l.set.Pop()
 			if !ok {
 				err = errors.Join(err, fmt.Errorf("%w: Failed checking import cycle due to missing element on module %s", ErrImportCycle, module))

@@ -11,6 +11,9 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
+	"strings"
+	"text/template"
 
 	"go.starlark.net/starlark"
 	"xorkevin.dev/anvil/util/stackset"
@@ -22,7 +25,10 @@ type (
 
 func (l universeLibBase) mod() starlark.StringDict {
 	return starlark.StringDict{
-		"getenv": starlark.NewBuiltin("getenv", l.getenv),
+		"getenv":    starlark.NewBuiltin("getenv", l.getenv),
+		"readfile":  starlark.NewBuiltin("readfile", l.readfile),
+		"writefile": starlark.NewBuiltin("writefile", l.writefile),
+		"gotmpl":    starlark.NewBuiltin("gotmpl", l.gotmpl),
 	}
 }
 
@@ -36,6 +42,50 @@ func (l universeLibBase) getenv(t *starlark.Thread, _ *starlark.Builtin, args st
 		return starlark.None, nil
 	}
 	return starlark.String(v), nil
+}
+
+func (l universeLibBase) readfile(t *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	var name string
+	if err := starlark.UnpackArgs("readfile", args, kwargs, "name", &name); err != nil {
+		return nil, fmt.Errorf("Invalid args: %w", err)
+	}
+	b, err := os.ReadFile(filepath.FromSlash(name))
+	if err != nil {
+		return nil, fmt.Errorf("Failed reading file %s: %w", name, err)
+	}
+	return starlark.String(b), nil
+}
+
+func (l universeLibBase) writefile(t *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	var name string
+	var data string
+	if err := starlark.UnpackArgs("writefile", args, kwargs, "name", &name, "data", &data); err != nil {
+		return nil, fmt.Errorf("Invalid args: %w", err)
+	}
+	if err := os.WriteFile(filepath.FromSlash(name), []byte(data), 0o644); err != nil {
+		return nil, fmt.Errorf("Failed writing file %s: %w", name, err)
+	}
+	return starlark.None, nil
+}
+
+func (l universeLibBase) gotmpl(t *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	var tmpl string
+	var tmplargs *starlark.Dict
+	if err := starlark.UnpackArgs("gotmpl", args, kwargs, "tmpl", &tmpl, "args", &tmplargs); err != nil {
+		return nil, fmt.Errorf("Invalid args: %w", err)
+	}
+	if tmplargs == nil {
+		tmplargs = starlark.NewDict(0)
+	}
+	tt, err := template.New("tmpl").Parse(tmpl)
+	if err != nil {
+		return nil, fmt.Errorf("Failed parsing template: %w", err)
+	}
+	var b strings.Builder
+	if err := tt.Execute(&b, tmplargs); err != nil {
+		return nil, fmt.Errorf("Failed executing template: %w", err)
+	}
+	return starlark.String(b.String()), nil
 }
 
 type (
@@ -366,7 +416,7 @@ func (l universeLibVault) dbconfigput(t *starlark.Thread, _ *starlark.Builtin, a
 	if err := l.doVaultReq("db cfg put", cfg, http.MethodPost, fmt.Sprintf("v1/%s/config/%s", cfg.dbmount, name), body, &res); err != nil {
 		return nil, err
 	}
-	return nil, nil
+	return starlark.None, nil
 }
 
 func (l universeLibVault) dbroleput(t *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
@@ -399,5 +449,5 @@ func (l universeLibVault) dbroleput(t *starlark.Thread, _ *starlark.Builtin, arg
 	if err := l.doVaultReq("db role put", cfg, http.MethodPost, fmt.Sprintf("v1/%s/roles/%s", cfg.dbmount, name), body, &res); err != nil {
 		return nil, err
 	}
-	return nil, nil
+	return starlark.None, nil
 }
