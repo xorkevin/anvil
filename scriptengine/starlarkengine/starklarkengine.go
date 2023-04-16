@@ -7,6 +7,7 @@ import (
 	"io"
 	"io/fs"
 	"path"
+	"reflect"
 	"strings"
 
 	starjson "go.starlark.net/lib/json"
@@ -98,9 +99,6 @@ func (e errImportCycle) Error() string {
 }
 
 func (l *modLoader) loadFile(module string) (starlark.StringDict, error) {
-	if m, ok := l.universe[module]; ok {
-		return m, nil
-	}
 	if m, ok := l.modCache[module]; ok {
 		return m.vals, m.err
 	}
@@ -134,6 +132,10 @@ func (l *modLoader) loadFile(module string) (starlark.StringDict, error) {
 }
 
 func (l *modLoader) load(from, module string) (starlark.StringDict, error) {
+	if m, ok := l.universe[module]; ok {
+		return m, nil
+	}
+
 	var name string
 	if path.IsAbs(module) {
 		name = path.Clean(module[1:])
@@ -206,7 +208,7 @@ func (e *Engine) Exec(ctx context.Context, name string, fn string, args map[stri
 
 func starlarkToGoValue(x starlark.Value, ss *stackset.Any) (_ any, retErr error) {
 	switch x.(type) {
-	case starlark.IterableMapping, starlark.Iterable, starlark.HasAttrs:
+	case *starlark.Dict, *starlark.List:
 		if !ss.Push(x) {
 			return nil, errors.New("Cycle in starlark value")
 		}
@@ -241,7 +243,7 @@ func starlarkToGoValue(x starlark.Value, ss *stackset.Any) (_ any, retErr error)
 	case starlark.String:
 		return string(x), nil
 
-	case starlark.IterableMapping:
+	case *starlark.Dict:
 		{
 			v := map[string]any{}
 			for _, i := range x.Items() {
@@ -258,7 +260,7 @@ func starlarkToGoValue(x starlark.Value, ss *stackset.Any) (_ any, retErr error)
 			return v, nil
 		}
 
-	case starlark.Iterable:
+	case *starlark.List:
 		{
 			var v []any
 			iter := x.Iterate()
@@ -274,23 +276,6 @@ func starlarkToGoValue(x starlark.Value, ss *stackset.Any) (_ any, retErr error)
 			return v, nil
 		}
 
-	case starlark.HasAttrs:
-		{
-			v := map[string]any{}
-			for _, k := range x.AttrNames() {
-				a, err := x.Attr(k)
-				if err != nil {
-					return nil, fmt.Errorf("Failed retrieving struct attr: %w", err)
-				}
-				vv, err := starlarkToGoValue(a, ss)
-				if err != nil {
-					return nil, err
-				}
-				v[k] = vv
-			}
-			return v, nil
-		}
-
 	default:
 		return nil, errors.New("Unknown starlark type")
 	}
@@ -302,13 +287,14 @@ func goToStarlarkValue(x any, ss *stackset.Any) (_ starlark.Value, retErr error)
 	}
 	switch x.(type) {
 	case map[string]any, []any:
-		if !ss.Push(x) {
+		ptr := reflect.ValueOf(x).UnsafePointer()
+		if !ss.Push(ptr) {
 			return nil, errors.New("Cycle in go value")
 		}
 		defer func() {
 			if v, ok := ss.Pop(); !ok {
 				retErr = errors.Join(retErr, errors.New("Failed checking go value cycle due to missing element"))
-			} else if v != x {
+			} else if v != ptr {
 				retErr = errors.Join(retErr, errors.New("Failed checking go value cycle due to mismatched element"))
 			}
 		}()

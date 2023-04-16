@@ -153,12 +153,16 @@ func (l universeLibBase) gotmpl(t *starlark.Thread, _ *starlark.Builtin, args st
 	if tmplargs == nil {
 		tmplargs = starlark.NewDict(0)
 	}
+	gtmplargs, err := starlarkToGoValue(tmplargs, stackset.NewAny())
+	if err != nil {
+		return nil, fmt.Errorf("Failed converting starlark value: %w", err)
+	}
 	tt, err := template.New("tmpl").Parse(tmpl)
 	if err != nil {
 		return nil, fmt.Errorf("Failed parsing template: %w", err)
 	}
 	var b strings.Builder
-	if err := tt.Execute(&b, tmplargs); err != nil {
+	if err := tt.Execute(&b, gtmplargs); err != nil {
 		return nil, fmt.Errorf("Failed executing template: %w", err)
 	}
 	return starlark.String(b.String()), nil
