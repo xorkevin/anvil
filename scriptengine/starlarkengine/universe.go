@@ -52,16 +52,16 @@ func (l universeLibBase) getargs(t *starlark.Thread, _ *starlark.Builtin, args s
 }
 
 func (l universeLibBase) sleep(t *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	ctx, ok := t.Local("ctx").(context.Context)
+	if !ok {
+		return nil, errors.New("No thread ctx")
+	}
 	var ms int64
 	if err := starlark.UnpackArgs("sleep", args, kwargs, "ms", &ms); err != nil {
 		return nil, fmt.Errorf("%w: %w", scriptengine.ErrInvalidArgs, err)
 	}
 	if ms < 1 {
 		return nil, fmt.Errorf("%w: Must sleep for a positive amount of time", scriptengine.ErrInvalidArgs)
-	}
-	ctx, ok := t.Local("ctx").(context.Context)
-	if !ok {
-		return nil, errors.New("No thread ctx")
 	}
 	select {
 	case <-ctx.Done():
@@ -371,6 +371,10 @@ func (l universeLibVault) readVaultCfg(vaultcfg *starlark.Dict) (*vaultCfg, erro
 }
 
 func (l universeLibVault) authkube(t *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	ctx, ok := t.Local("ctx").(context.Context)
+	if !ok {
+		return nil, errors.New("No thread ctx")
+	}
 	var role string
 	var vaultcfg *starlark.Dict
 	satokenfile := "/var/run/secrets/kubernetes.io/serviceaccount/token"
@@ -411,7 +415,7 @@ func (l universeLibVault) authkube(t *starlark.Thread, _ *starlark.Builtin, args
 			ClientToken string `json:"client_token"`
 		} `json:"auth"`
 	}
-	_, _, err = l.httpClient.DoJSON(context.Background(), req, &res)
+	_, _, err = l.httpClient.DoJSON(ctx, req, &res)
 	if err != nil {
 		return nil, fmt.Errorf("Failed making vault kube auth request: %w", err)
 	}
@@ -421,7 +425,7 @@ func (l universeLibVault) authkube(t *starlark.Thread, _ *starlark.Builtin, args
 	return starlark.String(res.Auth.ClientToken), nil
 }
 
-func (l universeLibVault) doVaultReq(name string, cfg *vaultCfg, method string, path string, body any, res any) error {
+func (l universeLibVault) doVaultReq(ctx context.Context, name string, cfg *vaultCfg, method string, path string, body any, res any) error {
 	if cfg.token == "" {
 		return fmt.Errorf("%w: Missing vault token", scriptengine.ErrInvalidArgs)
 	}
@@ -430,7 +434,7 @@ func (l universeLibVault) doVaultReq(name string, cfg *vaultCfg, method string, 
 		return fmt.Errorf("Failed creating vault %s request: %w", name, err)
 	}
 	req.Header.Set("X-Vault-Token", cfg.token)
-	_, decoded, err := l.httpClient.DoJSON(context.Background(), req, res)
+	_, decoded, err := l.httpClient.DoJSON(ctx, req, res)
 	if err != nil {
 		return fmt.Errorf("Failed making vault %s request: %w", name, err)
 	}
@@ -441,6 +445,10 @@ func (l universeLibVault) doVaultReq(name string, cfg *vaultCfg, method string, 
 }
 
 func (l universeLibVault) kvput(t *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	ctx, ok := t.Local("ctx").(context.Context)
+	if !ok {
+		return nil, errors.New("No thread ctx")
+	}
 	var key string
 	var value starlark.Value
 	var vaultcfg *starlark.Dict
@@ -483,7 +491,7 @@ func (l universeLibVault) kvput(t *starlark.Thread, _ *starlark.Builtin, args st
 			Version int `json:"version"`
 		} `json:"data"`
 	}
-	if err := l.doVaultReq("kv put", cfg, http.MethodPost, fmt.Sprintf("v1/%s/data/%s", cfg.kvmount, key), body, &res); err != nil {
+	if err := l.doVaultReq(ctx, "kv put", cfg, http.MethodPost, fmt.Sprintf("v1/%s/data/%s", cfg.kvmount, key), body, &res); err != nil {
 		return nil, err
 	}
 	if res.Data.Version < 1 {
@@ -495,6 +503,10 @@ func (l universeLibVault) kvput(t *starlark.Thread, _ *starlark.Builtin, args st
 }
 
 func (l universeLibVault) kvget(t *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	ctx, ok := t.Local("ctx").(context.Context)
+	if !ok {
+		return nil, errors.New("No thread ctx")
+	}
 	var key string
 	var vaultcfg *starlark.Dict
 	if err := starlark.UnpackArgs("kvget", args, kwargs, "key", &key, "vaultcfg", &vaultcfg); err != nil {
@@ -519,7 +531,7 @@ func (l universeLibVault) kvget(t *starlark.Thread, _ *starlark.Builtin, args st
 			} `json:"metadata"`
 		} `json:"data"`
 	}
-	if err := l.doVaultReq("kv get", cfg, http.MethodGet, fmt.Sprintf("v1/%s/data/%s", cfg.kvmount, key), nil, &res); err != nil {
+	if err := l.doVaultReq(ctx, "kv get", cfg, http.MethodGet, fmt.Sprintf("v1/%s/data/%s", cfg.kvmount, key), nil, &res); err != nil {
 		return nil, err
 	}
 	data, err := goToStarlarkValue(res.Data.Data, stackset.NewAny())
@@ -533,6 +545,10 @@ func (l universeLibVault) kvget(t *starlark.Thread, _ *starlark.Builtin, args st
 }
 
 func (l universeLibVault) dbconfigput(t *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	ctx, ok := t.Local("ctx").(context.Context)
+	if !ok {
+		return nil, errors.New("No thread ctx")
+	}
 	var name string
 	var dbcfg *starlark.Dict
 	var vaultcfg *starlark.Dict
@@ -559,13 +575,17 @@ func (l universeLibVault) dbconfigput(t *starlark.Thread, _ *starlark.Builtin, a
 		return nil, fmt.Errorf("%w: Missing vault db mount", scriptengine.ErrInvalidArgs)
 	}
 	var res any
-	if err := l.doVaultReq("db cfg put", cfg, http.MethodPost, fmt.Sprintf("v1/%s/config/%s", cfg.dbmount, name), body, &res); err != nil {
+	if err := l.doVaultReq(ctx, "db cfg put", cfg, http.MethodPost, fmt.Sprintf("v1/%s/config/%s", cfg.dbmount, name), body, &res); err != nil {
 		return nil, err
 	}
 	return starlark.None, nil
 }
 
 func (l universeLibVault) dbroleput(t *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	ctx, ok := t.Local("ctx").(context.Context)
+	if !ok {
+		return nil, errors.New("No thread ctx")
+	}
 	var name string
 	var role *starlark.Dict
 	var vaultcfg *starlark.Dict
@@ -592,7 +612,7 @@ func (l universeLibVault) dbroleput(t *starlark.Thread, _ *starlark.Builtin, arg
 		return nil, fmt.Errorf("%w: Missing vault db mount", scriptengine.ErrInvalidArgs)
 	}
 	var res any
-	if err := l.doVaultReq("db role put", cfg, http.MethodPost, fmt.Sprintf("v1/%s/roles/%s", cfg.dbmount, name), body, &res); err != nil {
+	if err := l.doVaultReq(ctx, "db role put", cfg, http.MethodPost, fmt.Sprintf("v1/%s/roles/%s", cfg.dbmount, name), body, &res); err != nil {
 		return nil, err
 	}
 	return starlark.None, nil

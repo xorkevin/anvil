@@ -9,6 +9,7 @@ import (
 	"path"
 	"reflect"
 	"strings"
+	"time"
 
 	starjson "go.starlark.net/lib/json"
 	starmath "go.starlark.net/lib/math"
@@ -22,9 +23,12 @@ import (
 
 type (
 	Engine struct {
-		fsys    fs.FS
-		libname string
+		fsys             fs.FS
+		libname          string
+		configHTTPClient configHTTPClient
 	}
+
+	Opt = func(e *Engine)
 
 	loadedModule struct {
 		vals starlark.StringDict
@@ -51,19 +55,28 @@ type (
 	}
 )
 
-func New(fsys fs.FS) *Engine {
+func New(fsys fs.FS, opts ...Opt) *Engine {
 	return &Engine{
 		libname: "anvil:std",
 		fsys:    fsys,
+		configHTTPClient: configHTTPClient{
+			timeout: 5 * time.Second,
+		},
+	}
+}
+
+func OptHttpClientTimeout(t time.Duration) Opt {
+	return func(e *Engine) {
+		e.configHTTPClient.timeout = t
 	}
 }
 
 type (
-	Builder struct{}
+	Builder []Opt
 )
 
 func (b Builder) Build(fsys fs.FS) (scriptengine.ScriptEngine, error) {
-	return New(fsys), nil
+	return New(fsys, b...), nil
 }
 
 func (w writerPrinter) print(_ *starlark.Thread, msg string) {
@@ -96,7 +109,9 @@ func (e *Engine) createModLoader(args *starlark.Dict, stdout io.Writer) *modLoad
 				args: args,
 			}.mod(),
 			e.libname + ":crypto": universeLibCrypto{}.mod(),
-			e.libname + ":vault":  universeLibVault{}.mod(),
+			e.libname + ":vault": universeLibVault{
+				httpClient: newHTTPClient(e.configHTTPClient),
+			}.mod(),
 		},
 		globals: starlark.StringDict{
 			"struct": starlark.NewBuiltin("struct", starlarkstruct.Make),
