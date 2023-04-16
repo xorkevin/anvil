@@ -35,6 +35,7 @@ type (
 		root     fs.FS
 		modCache map[string]*loadedModule
 		set      *stackset.StackSet[string]
+		stdout   io.Writer
 		universe map[string]starlark.StringDict
 		globals  starlark.StringDict
 	}
@@ -69,8 +70,6 @@ func (w writerPrinter) print(_ *starlark.Thread, msg string) {
 	fmt.Fprintln(w.w, msg)
 }
 
-func discardPrinter(_ *starlark.Thread, msg string) {}
-
 // ErrImportCycle is returned when module dependencies form a cycle
 var ErrImportCycle errImportCycle
 
@@ -82,17 +81,19 @@ func (e errImportCycle) Error() string {
 	return "Import cycle"
 }
 
-func (e *Engine) createModLoader() *modLoader {
+func (e *Engine) createModLoader(args *starlark.Dict, stdout io.Writer) *modLoader {
 	return &modLoader{
 		root:     e.fsys,
 		modCache: map[string]*loadedModule{},
 		set:      stackset.New[string](),
+		stdout:   stdout,
 		universe: map[string]starlark.StringDict{
 			e.libname + ":json": starjson.Module.Members,
 			e.libname + ":math": starmath.Module.Members,
 			e.libname + ":time": startime.Module.Members,
 			e.libname: universeLibBase{
 				root: e.fsys,
+				args: args,
 			}.mod(),
 			e.libname + ":crypto": universeLibCrypto{}.mod(),
 			e.libname + ":vault":  universeLibVault{}.mod(),
@@ -126,7 +127,7 @@ func (l *modLoader) loadFile(ctx context.Context, module string) (starlark.Strin
 		} else {
 			thread := &starlark.Thread{
 				Name:  module,
-				Print: discardPrinter,
+				Print: writerPrinter{w: l.stdout}.print,
 				Load:  fromLoader{ctx: ctx, l: l, from: module}.load,
 			}
 			thread.SetLocal("ctx", ctx)
@@ -190,7 +191,22 @@ func errLoader(_ *starlark.Thread, module string) (starlark.StringDict, error) {
 }
 
 func (e *Engine) Exec(ctx context.Context, name string, fn string, args map[string]any, stdout io.Writer) (any, error) {
-	ml := e.createModLoader()
+	if args == nil {
+		args = map[string]any{}
+	}
+	if stdout == nil {
+		stdout = io.Discard
+	}
+	ss := stackset.NewAny()
+	sargs, err := goToStarlarkValue(args, ss)
+	if err != nil {
+		return nil, kerrors.WithMsg(err, "Failed converting go value args to starlark values")
+	}
+	sdargs, ok := sargs.(*starlark.Dict)
+	if !ok {
+		return nil, kerrors.WithMsg(err, "Failed starlark args malformed")
+	}
+	ml := e.createModLoader(sdargs, stdout)
 	vals, err := ml.load(ctx, "", name)
 	if err != nil {
 		return nil, err
@@ -202,19 +218,11 @@ func (e *Engine) Exec(ctx context.Context, name string, fn string, args map[stri
 	if _, ok := f.(starlark.Callable); !ok {
 		return nil, kerrors.WithMsg(nil, fmt.Sprintf("Global %s in module %s is not callable", fn, name))
 	}
-	ss := stackset.NewAny()
-	sargs, err := goToStarlarkValue(args, ss)
-	if err != nil {
-		return nil, kerrors.WithMsg(err, "Failed converting go value args to starlark values")
-	}
-	if stdout == nil {
-		stdout = io.Discard
-	}
 	sv, err := starlark.Call(&starlark.Thread{
 		Name:  name + "." + fn,
 		Print: writerPrinter{w: stdout}.print,
 		Load:  errLoader,
-	}, f, []starlark.Value{sargs}, nil)
+	}, f, starlark.Tuple{sargs}, nil)
 	if err != nil {
 		return nil, kerrors.WithMsg(err, fmt.Sprintf("Failed executing function %s in module %s", fn, name))
 	}

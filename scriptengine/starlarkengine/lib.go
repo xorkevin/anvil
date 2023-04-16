@@ -27,11 +27,13 @@ import (
 type (
 	universeLibBase struct {
 		root fs.FS
+		args *starlark.Dict
 	}
 )
 
 func (l universeLibBase) mod() starlark.StringDict {
 	return starlark.StringDict{
+		"getargs":         starlark.NewBuiltin("getargs", l.getargs),
 		"sleep":           starlark.NewBuiltin("sleep", l.getenv),
 		"getenv":          starlark.NewBuiltin("getenv", l.getenv),
 		"json_marshal":    starlark.NewBuiltin("json_marshal", l.jsonMarshal),
@@ -43,6 +45,10 @@ func (l universeLibBase) mod() starlark.StringDict {
 		"writefile":       starlark.NewBuiltin("writefile", l.writefile),
 		"gotmpl":          starlark.NewBuiltin("gotmpl", l.gotmpl),
 	}
+}
+
+func (l universeLibBase) getargs(t *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	return l.args, nil
 }
 
 func (l universeLibBase) sleep(t *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
