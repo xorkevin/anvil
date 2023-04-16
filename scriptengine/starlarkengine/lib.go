@@ -17,6 +17,7 @@ import (
 
 	"go.starlark.net/starlark"
 	"xorkevin.dev/anvil/scriptengine"
+	"xorkevin.dev/anvil/util/kjson"
 	"xorkevin.dev/anvil/util/stackset"
 )
 
@@ -26,10 +27,13 @@ type (
 
 func (l universeLibBase) mod() starlark.StringDict {
 	return starlark.StringDict{
-		"getenv":    starlark.NewBuiltin("getenv", l.getenv),
-		"readfile":  starlark.NewBuiltin("readfile", l.readfile),
-		"writefile": starlark.NewBuiltin("writefile", l.writefile),
-		"gotmpl":    starlark.NewBuiltin("gotmpl", l.gotmpl),
+		"getenv":          starlark.NewBuiltin("getenv", l.getenv),
+		"json_marshal":    starlark.NewBuiltin("json_marshal", l.jsonMarshal),
+		"json_unmarshal":  starlark.NewBuiltin("json_unmarshal", l.jsonUnmarshal),
+		"json_mergepatch": starlark.NewBuiltin("json_mergepatch", l.jsonMergePatch),
+		"readfile":        starlark.NewBuiltin("readfile", l.readfile),
+		"writefile":       starlark.NewBuiltin("writefile", l.writefile),
+		"gotmpl":          starlark.NewBuiltin("gotmpl", l.gotmpl),
 	}
 }
 
@@ -43,6 +47,77 @@ func (l universeLibBase) getenv(t *starlark.Thread, _ *starlark.Builtin, args st
 		return starlark.None, nil
 	}
 	return starlark.String(v), nil
+}
+
+func (l universeLibBase) jsonMarshal(t *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	var v starlark.Value
+	if err := starlark.UnpackArgs("json_marshal", args, kwargs, "v", &v); err != nil {
+		return nil, fmt.Errorf("%w: %w", scriptengine.ErrInvalidArgs, err)
+	}
+	if v == nil {
+		return nil, fmt.Errorf("%w: Empty value", scriptengine.ErrInvalidArgs)
+	}
+
+	gv, err := starlarkToGoValue(v, stackset.NewAny())
+	if err != nil {
+		return nil, fmt.Errorf("Failed converting starlark value: %w", err)
+	}
+	b, err := kjson.Marshal(gv)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to marshal json: %w", err)
+	}
+	return starlark.String(b), nil
+}
+
+func (l universeLibBase) jsonUnmarshal(t *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	var s string
+	if err := starlark.UnpackArgs("json_unmarshal", args, kwargs, "s", &s); err != nil {
+		return nil, fmt.Errorf("%w: %w", scriptengine.ErrInvalidArgs, err)
+	}
+	if s == "" {
+		return nil, fmt.Errorf("%w: Empty json string", scriptengine.ErrInvalidArgs)
+	}
+
+	var v any
+	if err := kjson.Unmarshal([]byte(s), &v); err != nil {
+		return nil, fmt.Errorf("Failed to unmarshal json: %w", err)
+	}
+
+	sv, err := goToStarlarkValue(v, stackset.NewAny())
+	if err != nil {
+		return nil, fmt.Errorf("Failed converting go value: %w", err)
+	}
+	return sv, nil
+}
+
+func (l universeLibBase) jsonMergePatch(t *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	var a starlark.Value
+	var b starlark.Value
+	if err := starlark.UnpackArgs("json_marshal", args, kwargs, "a", &a, "b", &b); err != nil {
+		return nil, fmt.Errorf("%w: %w", scriptengine.ErrInvalidArgs, err)
+	}
+	if a == nil {
+		return nil, fmt.Errorf("%w: Empty value", scriptengine.ErrInvalidArgs)
+	}
+	if b == nil {
+		return nil, fmt.Errorf("%w: Empty value", scriptengine.ErrInvalidArgs)
+	}
+
+	ss := stackset.NewAny()
+	ga, err := starlarkToGoValue(a, ss)
+	if err != nil {
+		return nil, fmt.Errorf("Failed converting starlark value: %w", err)
+	}
+	gb, err := starlarkToGoValue(b, ss)
+	if err != nil {
+		return nil, fmt.Errorf("Failed converting starlark value: %w", err)
+	}
+	v := kjson.MergePatch(ga, gb)
+	sv, err := goToStarlarkValue(v, ss)
+	if err != nil {
+		return nil, fmt.Errorf("Failed converting go value: %w", err)
+	}
+	return sv, nil
 }
 
 func (l universeLibBase) readfile(t *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
