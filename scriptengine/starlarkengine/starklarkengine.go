@@ -58,10 +58,12 @@ func New(fsys fs.FS) *Engine {
 		modCache: map[string]*loadedModule{},
 		set:      stackset.New[string](),
 		universe: map[string]starlark.StringDict{
-			eng.libname + ":json":   starjson.Module.Members,
-			eng.libname + ":math":   starmath.Module.Members,
-			eng.libname + ":time":   startime.Module.Members,
-			eng.libname:             universeLibBase{}.mod(),
+			eng.libname + ":json": starjson.Module.Members,
+			eng.libname + ":math": starmath.Module.Members,
+			eng.libname + ":time": startime.Module.Members,
+			eng.libname: universeLibBase{
+				root: fsys,
+			}.mod(),
 			eng.libname + ":crypto": universeLibCrypto{}.mod(),
 			eng.libname + ":vault":  universeLibVault{}.mod(),
 		},
@@ -98,6 +100,16 @@ func (e errImportCycle) Error() string {
 	return "Import cycle"
 }
 
+func (l *modLoader) getGlobals(module string) starlark.StringDict {
+	g := make(starlark.StringDict, len(l.globals)+2)
+	for k, v := range l.globals {
+		g[k] = v
+	}
+	g["__anvil_mod__"] = starlark.String(module)
+	g["__anvil_moddir__"] = starlark.String(path.Clean(path.Dir(module)))
+	return g
+}
+
 func (l *modLoader) loadFile(module string) (starlark.StringDict, error) {
 	if m, ok := l.modCache[module]; ok {
 		return m.vals, m.err
@@ -112,7 +124,7 @@ func (l *modLoader) loadFile(module string) (starlark.StringDict, error) {
 				Name:  module,
 				Print: discardPrinter,
 				Load:  fromLoader{l: l, from: module}.load,
-			}, module, b, l.globals)
+			}, module, b, l.getGlobals(module))
 			v, ok := l.set.Pop()
 			if !ok {
 				err = errors.Join(err, fmt.Errorf("%w: Failed checking import cycle due to missing element on module %s", ErrImportCycle, module))

@@ -9,8 +9,10 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"text/template"
@@ -22,7 +24,9 @@ import (
 )
 
 type (
-	universeLibBase struct{}
+	universeLibBase struct {
+		root fs.FS
+	}
 )
 
 func (l universeLibBase) mod() starlark.StringDict {
@@ -31,7 +35,9 @@ func (l universeLibBase) mod() starlark.StringDict {
 		"json_marshal":    starlark.NewBuiltin("json_marshal", l.jsonMarshal),
 		"json_unmarshal":  starlark.NewBuiltin("json_unmarshal", l.jsonUnmarshal),
 		"json_mergepatch": starlark.NewBuiltin("json_mergepatch", l.jsonMergePatch),
+		"path_join":       starlark.NewBuiltin("path_join", l.pathJoin),
 		"readfile":        starlark.NewBuiltin("readfile", l.readfile),
+		"readmodfile":     starlark.NewBuiltin("readmodfile", l.readmodfile),
 		"writefile":       starlark.NewBuiltin("writefile", l.writefile),
 		"gotmpl":          starlark.NewBuiltin("gotmpl", l.gotmpl),
 	}
@@ -120,6 +126,26 @@ func (l universeLibBase) jsonMergePatch(t *starlark.Thread, _ *starlark.Builtin,
 	return sv, nil
 }
 
+func (l universeLibBase) pathJoin(t *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	var segments *starlark.List
+	if err := starlark.UnpackArgs("path_join", args, kwargs, "segments", &segments); err != nil {
+		return nil, fmt.Errorf("%w: %w", scriptengine.ErrInvalidArgs, err)
+	}
+	if segments == nil {
+		segments = starlark.NewList(nil)
+	}
+	segs := make([]string, 0, segments.Len())
+	for i := 0; i < segments.Len(); i++ {
+		v := segments.Index(i)
+		s, ok := v.(starlark.String)
+		if !ok {
+			return nil, fmt.Errorf("%w: Path segment must be string", scriptengine.ErrInvalidArgs)
+		}
+		segs = append(segs, string(s))
+	}
+	return starlark.String(path.Join(segs...)), nil
+}
+
 func (l universeLibBase) readfile(t *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	var name string
 	if err := starlark.UnpackArgs("readfile", args, kwargs, "name", &name); err != nil {
@@ -128,6 +154,18 @@ func (l universeLibBase) readfile(t *starlark.Thread, _ *starlark.Builtin, args 
 	b, err := os.ReadFile(filepath.FromSlash(name))
 	if err != nil {
 		return nil, fmt.Errorf("Failed reading file %s: %w", name, err)
+	}
+	return starlark.String(b), nil
+}
+
+func (l universeLibBase) readmodfile(t *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	var name string
+	if err := starlark.UnpackArgs("readmodfile", args, kwargs, "name", &name); err != nil {
+		return nil, fmt.Errorf("%w: %w", scriptengine.ErrInvalidArgs, err)
+	}
+	b, err := fs.ReadFile(l.root, name)
+	if err != nil {
+		return nil, fmt.Errorf("Failed reading mod file %s: %w", name, err)
 	}
 	return starlark.String(b), nil
 }

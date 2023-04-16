@@ -42,6 +42,8 @@ local world = import 'subdir/world.libsonnet';
   "str": anvil.jsonMarshal({
     "foo": "bar",
   }),
+  "foo": anvil.jsonUnmarshal('{"foo":"bar"}'),
+  "name": anvil.pathJoin(['abc', 'def']),
   "obj": anvil.jsonMergePatch(
     {
       "foo": {
@@ -88,6 +90,10 @@ local vars = import '/vars.libsonnet';
 			Expected: map[string]any{
 				"hello": "world",
 				"str":   "{\"foo\":\"bar\"}\n",
+				"foo": map[string]any{
+					"foo": "bar",
+				},
+				"name": "abc/def",
 				"obj": map[string]any{
 					"foo": map[string]any{
 						"bar": "foo",

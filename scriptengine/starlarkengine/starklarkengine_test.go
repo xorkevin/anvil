@@ -6,6 +6,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
 	"testing"
 	"testing/fstest"
 	"time"
@@ -16,7 +17,11 @@ import (
 func TestEngine(t *testing.T) {
 	t.Parallel()
 
+	assert := require.New(t)
+
 	tempDir := t.TempDir()
+
+	assert.NoError(os.WriteFile(filepath.Join(tempDir, "foo.txt"), []byte(`foo`), 0o644))
 
 	now := time.Now()
 	var filemode fs.FileMode = 0o644
@@ -29,34 +34,44 @@ func TestEngine(t *testing.T) {
 		Args          map[string]any
 		Expected      any
 		ExpectedFiles map[string]string
+		Log           string
 	}{
 		{
 			Name: "executes starlark",
 			Fsys: fstest.MapFS{
 				"main.star": &fstest.MapFile{
 					Data: []byte(`
-load("anvil:std", "writefile")
+load("anvil:std", "readfile", "writefile", "json_marshal", "json_unmarshal", "json_mergepatch")
 load("subdir/hello.star", "hello_msg")
 
 def main(args):
   file = args["file"]
-  name = args["name"]
-  if file == None or not file.startswith("/tmp/"):
+  if not file.startswith("/tmp/"):
     fail("Invalid file")
-  writefile(file, hello_msg(name))
-  return True
+  foo = readfile(args["inp"])
+  writefile(file, json_marshal({ "msg": hello_msg(args["name"]) }))
+  return json_mergepatch(
+    json_unmarshal("""{ "a": "a", "b": "b" }"""),
+    { "b": foo },
+  )
 `),
 					Mode:    filemode,
 					ModTime: now,
 				},
 				"subdir/hello.star": &fstest.MapFile{
 					Data: []byte(`
-load("anvil:std", "gotmpl")
+load("anvil:std", "gotmpl", "readmodfile", "path_join")
+
 def hello_msg(name):
-  return gotmpl("""Hello, {{.name}}""", {
-    "name": name,
-  })
+  print("writing message from dir {}".format(__anvil_moddir__))
+  tmpl = readmodfile(path_join([__anvil_moddir__, "msg.tmpl"]))
+  return gotmpl(tmpl, { "name": name })
 `),
+					Mode:    filemode,
+					ModTime: now,
+				},
+				"subdir/msg.tmpl": &fstest.MapFile{
+					Data:    []byte(`Hello, {{.name}}`),
 					Mode:    filemode,
 					ModTime: now,
 				},
@@ -64,13 +79,18 @@ def hello_msg(name):
 			File: "main.star",
 			Main: "main",
 			Args: map[string]any{
-				"file": path.Join(filepath.ToSlash(tempDir), "out.conf"),
+				"file": path.Join(filepath.ToSlash(tempDir), "out.json"),
+				"inp":  path.Join(filepath.ToSlash(tempDir), "foo.txt"),
 				"name": "world",
 			},
-			Expected: true,
-			ExpectedFiles: map[string]string{
-				"out.conf": "Hello, world",
+			Expected: map[string]any{
+				"a": "a",
+				"b": "foo",
 			},
+			ExpectedFiles: map[string]string{
+				"out.json": "{\"msg\":\"Hello, world\"}\n",
+			},
+			Log: "writing message from dir subdir\n",
 		},
 	} {
 		tc := tc
@@ -80,9 +100,11 @@ def hello_msg(name):
 
 			eng, err := Builder{}.Build(tc.Fsys)
 			assert.NoError(err)
-			out, err := eng.Exec(context.Background(), tc.File, tc.Main, tc.Args, nil)
+			var log strings.Builder
+			out, err := eng.Exec(context.Background(), tc.File, tc.Main, tc.Args, &log)
 			assert.NoError(err)
 			assert.Equal(tc.Expected, out)
+			assert.Equal(tc.Log, log.String())
 			for k, v := range tc.ExpectedFiles {
 				b, err := os.ReadFile(filepath.Join(tempDir, filepath.FromSlash(k)))
 				assert.NoError(err)
