@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"strings"
 	"text/template"
+	"time"
 
 	"go.starlark.net/starlark"
 	"xorkevin.dev/anvil/scriptengine"
@@ -31,6 +32,7 @@ type (
 
 func (l universeLibBase) mod() starlark.StringDict {
 	return starlark.StringDict{
+		"sleep":           starlark.NewBuiltin("sleep", l.getenv),
 		"getenv":          starlark.NewBuiltin("getenv", l.getenv),
 		"json_marshal":    starlark.NewBuiltin("json_marshal", l.jsonMarshal),
 		"json_unmarshal":  starlark.NewBuiltin("json_unmarshal", l.jsonUnmarshal),
@@ -41,6 +43,26 @@ func (l universeLibBase) mod() starlark.StringDict {
 		"writefile":       starlark.NewBuiltin("writefile", l.writefile),
 		"gotmpl":          starlark.NewBuiltin("gotmpl", l.gotmpl),
 	}
+}
+
+func (l universeLibBase) sleep(t *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	var ms int64
+	if err := starlark.UnpackArgs("sleep", args, kwargs, "ms", &ms); err != nil {
+		return nil, fmt.Errorf("%w: %w", scriptengine.ErrInvalidArgs, err)
+	}
+	if ms < 1 {
+		return nil, fmt.Errorf("%w: Must sleep for a positive amount of time", scriptengine.ErrInvalidArgs)
+	}
+	ctx, ok := t.Local("ctx").(context.Context)
+	if !ok {
+		return nil, errors.New("No thread ctx")
+	}
+	select {
+	case <-ctx.Done():
+		return nil, fmt.Errorf("Context cancelled: %w", context.Cause(ctx))
+	case <-time.After(time.Duration(ms) * time.Millisecond):
+	}
+	return starlark.None, nil
 }
 
 func (l universeLibBase) getenv(t *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {

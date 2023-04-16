@@ -22,8 +22,8 @@ import (
 
 type (
 	Engine struct {
-		libname   string
-		modLoader *modLoader
+		fsys    fs.FS
+		libname string
 	}
 
 	loadedModule struct {
@@ -40,6 +40,7 @@ type (
 	}
 
 	fromLoader struct {
+		ctx  context.Context
 		l    *modLoader
 		from string
 	}
@@ -50,29 +51,10 @@ type (
 )
 
 func New(fsys fs.FS) *Engine {
-	eng := &Engine{
+	return &Engine{
 		libname: "anvil:std",
+		fsys:    fsys,
 	}
-	eng.modLoader = &modLoader{
-		root:     fsys,
-		modCache: map[string]*loadedModule{},
-		set:      stackset.New[string](),
-		universe: map[string]starlark.StringDict{
-			eng.libname + ":json": starjson.Module.Members,
-			eng.libname + ":math": starmath.Module.Members,
-			eng.libname + ":time": startime.Module.Members,
-			eng.libname: universeLibBase{
-				root: fsys,
-			}.mod(),
-			eng.libname + ":crypto": universeLibCrypto{}.mod(),
-			eng.libname + ":vault":  universeLibVault{}.mod(),
-		},
-		globals: starlark.StringDict{
-			"struct": starlark.NewBuiltin("struct", starlarkstruct.Make),
-			"module": starlark.NewBuiltin("module", starlarkstruct.MakeModule),
-		},
-	}
-	return eng
 }
 
 type (
@@ -83,11 +65,11 @@ func (b Builder) Build(fsys fs.FS) (scriptengine.ScriptEngine, error) {
 	return New(fsys), nil
 }
 
-func (w writerPrinter) print(t *starlark.Thread, msg string) {
+func (w writerPrinter) print(_ *starlark.Thread, msg string) {
 	fmt.Fprintln(w.w, msg)
 }
 
-func discardPrinter(t *starlark.Thread, msg string) {}
+func discardPrinter(_ *starlark.Thread, msg string) {}
 
 // ErrImportCycle is returned when module dependencies form a cycle
 var ErrImportCycle errImportCycle
@@ -100,6 +82,28 @@ func (e errImportCycle) Error() string {
 	return "Import cycle"
 }
 
+func (e *Engine) createModLoader() *modLoader {
+	return &modLoader{
+		root:     e.fsys,
+		modCache: map[string]*loadedModule{},
+		set:      stackset.New[string](),
+		universe: map[string]starlark.StringDict{
+			e.libname + ":json": starjson.Module.Members,
+			e.libname + ":math": starmath.Module.Members,
+			e.libname + ":time": startime.Module.Members,
+			e.libname: universeLibBase{
+				root: e.fsys,
+			}.mod(),
+			e.libname + ":crypto": universeLibCrypto{}.mod(),
+			e.libname + ":vault":  universeLibVault{}.mod(),
+		},
+		globals: starlark.StringDict{
+			"struct": starlark.NewBuiltin("struct", starlarkstruct.Make),
+			"module": starlark.NewBuiltin("module", starlarkstruct.MakeModule),
+		},
+	}
+}
+
 func (l *modLoader) getGlobals(module string) starlark.StringDict {
 	g := make(starlark.StringDict, len(l.globals)+2)
 	for k, v := range l.globals {
@@ -110,7 +114,7 @@ func (l *modLoader) getGlobals(module string) starlark.StringDict {
 	return g
 }
 
-func (l *modLoader) loadFile(module string) (starlark.StringDict, error) {
+func (l *modLoader) loadFile(ctx context.Context, module string) (starlark.StringDict, error) {
 	if m, ok := l.modCache[module]; ok {
 		return m.vals, m.err
 	}
@@ -120,11 +124,13 @@ func (l *modLoader) loadFile(module string) (starlark.StringDict, error) {
 		if !l.set.Push(module) {
 			err = fmt.Errorf("%w: Import cycle on module: %s -> %s", ErrImportCycle, strings.Join(l.set.Slice(), ","), module)
 		} else {
-			vals, err = starlark.ExecFile(&starlark.Thread{
+			thread := &starlark.Thread{
 				Name:  module,
 				Print: discardPrinter,
-				Load:  fromLoader{l: l, from: module}.load,
-			}, module, b, l.getGlobals(module))
+				Load:  fromLoader{ctx: ctx, l: l, from: module}.load,
+			}
+			thread.SetLocal("ctx", ctx)
+			vals, err = starlark.ExecFile(thread, module, b, l.getGlobals(module))
 			v, ok := l.set.Pop()
 			if !ok {
 				err = errors.Join(err, fmt.Errorf("%w: Failed checking import cycle due to missing element on module %s", ErrImportCycle, module))
@@ -143,7 +149,7 @@ func (l *modLoader) loadFile(module string) (starlark.StringDict, error) {
 	return vals, err
 }
 
-func (l *modLoader) load(from, module string) (starlark.StringDict, error) {
+func (l *modLoader) load(ctx context.Context, from, module string) (starlark.StringDict, error) {
 	if m, ok := l.universe[module]; ok {
 		return m, nil
 	}
@@ -157,15 +163,15 @@ func (l *modLoader) load(from, module string) (starlark.StringDict, error) {
 	if !fs.ValidPath(name) {
 		return nil, fmt.Errorf("%w: Invalid filepath %s from %s", fs.ErrInvalid, module, from)
 	}
-	vals, err := l.loadFile(name)
+	vals, err := l.loadFile(ctx, name)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to read module %s: %w", name, err)
 	}
 	return vals, nil
 }
 
-func (l fromLoader) load(t *starlark.Thread, module string) (starlark.StringDict, error) {
-	return l.l.load(l.from, module)
+func (l fromLoader) load(_ *starlark.Thread, module string) (starlark.StringDict, error) {
+	return l.l.load(l.ctx, l.from, module)
 }
 
 // ErrNoRuntimeLoad is returned when attempting to load modules not ata the top level
@@ -179,12 +185,13 @@ func (e errNoRuntimeLoad) Error() string {
 	return "May not load modules not at the top level"
 }
 
-func errLoader(t *starlark.Thread, module string) (starlark.StringDict, error) {
+func errLoader(_ *starlark.Thread, module string) (starlark.StringDict, error) {
 	return nil, ErrNoRuntimeLoad
 }
 
 func (e *Engine) Exec(ctx context.Context, name string, fn string, args map[string]any, stdout io.Writer) (any, error) {
-	vals, err := e.modLoader.load("", name)
+	ml := e.createModLoader()
+	vals, err := ml.load(ctx, "", name)
 	if err != nil {
 		return nil, err
 	}
