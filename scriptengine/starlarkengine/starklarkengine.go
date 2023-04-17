@@ -33,6 +33,7 @@ type (
 
 	// NativeFunc is a starlark function implemented in go
 	NativeFunc struct {
+		Mod    string
 		Name   string
 		Fn     func(ctx context.Context, args []any) (any, error)
 		Params []string
@@ -134,11 +135,23 @@ func (f NativeFunc) call(t *starlark.Thread, _ *starlark.Builtin, args starlark.
 
 func (e *Engine) createModLoader(args map[string]any, stdout io.Writer) *modLoader {
 	baseMod := starlark.StringDict{}
+	subMods := map[string]starlark.StringDict{}
 	for _, v := range append(universeLibBase{
-		root: e.fsys,
-		args: args,
+		root:       e.fsys,
+		httpClient: newHTTPClient(e.configHTTPClient),
+		args:       args,
 	}.mod(), e.nativeFuncs...) {
-		baseMod[v.Name] = starlark.NewBuiltin(v.Name, v.call)
+		if v.Mod == "" {
+			baseMod[v.Name] = starlark.NewBuiltin(v.Name, v.call)
+		} else {
+			if _, ok := subMods[v.Mod]; !ok {
+				subMods[v.Mod] = starlark.StringDict{}
+			}
+			subMods[v.Mod][v.Name] = starlark.NewBuiltin(v.Name, v.call)
+		}
+	}
+	for k, v := range subMods {
+		baseMod[k] = starlarkstruct.FromStringDict(starlarkstruct.Default, v)
 	}
 	return &modLoader{
 		root:     e.fsys,
@@ -146,14 +159,10 @@ func (e *Engine) createModLoader(args map[string]any, stdout io.Writer) *modLoad
 		set:      stackset.New[string](),
 		stdout:   stdout,
 		universe: map[string]starlark.StringDict{
-			e.libname + ":json":   starjson.Module.Members,
-			e.libname + ":math":   starmath.Module.Members,
-			e.libname + ":time":   startime.Module.Members,
-			e.libname:             baseMod,
-			e.libname + ":crypto": universeLibCrypto{}.mod(),
-			e.libname + ":vault": universeLibVault{
-				httpClient: newHTTPClient(e.configHTTPClient),
-			}.mod(),
+			e.libname + ":json": starjson.Module.Members,
+			e.libname + ":math": starmath.Module.Members,
+			e.libname + ":time": startime.Module.Members,
+			e.libname:           baseMod,
 		},
 		globals: starlark.StringDict{
 			"struct": starlark.NewBuiltin("struct", starlarkstruct.Make),

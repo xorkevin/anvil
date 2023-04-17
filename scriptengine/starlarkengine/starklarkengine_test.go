@@ -41,17 +41,17 @@ func TestEngine(t *testing.T) {
 			Fsys: fstest.MapFS{
 				"main.star": &fstest.MapFile{
 					Data: []byte(`
-load("anvil:std", "readfile", "writefile", "json_marshal", "json_unmarshal", "json_mergepatch")
+load("anvil:std", "os", "json")
 load("subdir/hello.star", "hello_msg")
 
 def main(args):
   file = args["file"]
   if not file.startswith("/tmp/"):
     fail("Invalid file")
-  foo = readfile(args["inp"])
-  writefile(file, json_marshal({ "msg": hello_msg(args["name"]) }))
-  return json_mergepatch(
-    json_unmarshal("""{ "a": 1, "b": "b" }"""),
+  foo = os.readfile(args["inp"])
+  os.writefile(file, json.marshal({ "msg": hello_msg(args["name"]) }))
+  return json.mergepatch(
+    json.unmarshal("""{ "a": 1, "b": "b" }"""),
     { "b": foo, "c": "bar" },
   )
 `),
@@ -60,12 +60,12 @@ def main(args):
 				},
 				"subdir/hello.star": &fstest.MapFile{
 					Data: []byte(`
-load("anvil:std", "gotmpl", "readmodfile", "path_join")
+load("anvil:std", "template", "os", "path")
 
 def hello_msg(name):
   print("writing message from dir {}".format(__anvil_moddir__))
-  tmpl = readmodfile(path_join([__anvil_moddir__, "msg.tmpl"]))
-  return gotmpl(tmpl, { "name": name })
+  tpl = os.readmodfile(path.join([__anvil_moddir__, "msg.tmpl"]))
+  return template.gotpl(tpl, { "name": name })
 `),
 					Mode:    filemode,
 					ModTime: now,
