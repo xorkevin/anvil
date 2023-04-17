@@ -51,8 +51,8 @@ def main(args):
   foo = readfile(args["inp"])
   writefile(file, json_marshal({ "msg": hello_msg(args["name"]) }))
   return json_mergepatch(
-    json_unmarshal("""{ "a": "a", "b": "b" }"""),
-    { "b": foo },
+    json_unmarshal("""{ "a": 1, "b": "b" }"""),
+    { "b": foo, "c": "bar" },
   )
 `),
 					Mode:    filemode,
@@ -84,8 +84,9 @@ def hello_msg(name):
 				"name": "world",
 			},
 			Expected: map[string]any{
-				"a": "a",
+				"a": 1,
 				"b": "foo",
+				"c": "bar",
 			},
 			ExpectedFiles: map[string]string{
 				"out.json": "{\"msg\":\"Hello, world\"}\n",

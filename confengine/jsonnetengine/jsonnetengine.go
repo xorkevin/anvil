@@ -2,6 +2,7 @@ package jsonnetengine
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/fs"
@@ -27,9 +28,9 @@ type (
 
 	// NativeFunc is a jsonnet function implemented in go
 	NativeFunc struct {
-		name   string
-		fn     func(args []any) (any, error)
-		params []string
+		Name   string
+		Fn     func(args []any) (any, error)
+		Params []string
 	}
 
 	// Opt are jsonnet engine constructor options
@@ -106,13 +107,13 @@ func (e *Engine) buildVM(args map[string]any, stdout io.Writer) *jsonnet.VM {
 
 	for _, v := range append([]NativeFunc{
 		{
-			name:   "getargs",
-			fn:     confArgs{args: args}.getargs,
-			params: []string{},
+			Name:   "getargs",
+			Fn:     confArgs{args: args}.getargs,
+			Params: []string{},
 		},
 		{
-			name: "jsonMarshal",
-			fn: func(args []any) (any, error) {
+			Name: "jsonMarshal",
+			Fn: func(args []any) (any, error) {
 				if len(args) != 1 {
 					return nil, fmt.Errorf("%w: jsonMarshal needs 1 argument", confengine.ErrInvalidArgs)
 				}
@@ -122,70 +123,72 @@ func (e *Engine) buildVM(args map[string]any, stdout io.Writer) *jsonnet.VM {
 				}
 				return string(b), nil
 			},
-			params: []string{"v"},
+			Params: []string{"v"},
 		},
 		{
-			name: "jsonUnmarshal",
-			fn: func(args []any) (any, error) {
+			Name: "jsonUnmarshal",
+			Fn: func(args []any) (any, error) {
 				if len(args) != 1 {
 					return nil, fmt.Errorf("%w: jsonUnmarshal needs 1 argument", confengine.ErrInvalidArgs)
 				}
 				a, ok := args[0].(string)
 				if !ok {
-					return nil, fmt.Errorf("%w: Failed to decode arg as string", confengine.ErrInvalidArgs)
+					return nil, fmt.Errorf("%w: JSON must be a string", confengine.ErrInvalidArgs)
 				}
+				// jsonnet treats all numbers as float64, therefore no need to decode
+				// as number. It also does not handle [json.Number].
 				var v any
-				if err := kjson.Unmarshal([]byte(a), &v); err != nil {
+				if err := json.Unmarshal([]byte(a), &v); err != nil {
 					return nil, fmt.Errorf("Failed to unmarshal json: %w", err)
 				}
 				return v, nil
 			},
-			params: []string{"v"},
+			Params: []string{"v"},
 		},
 		{
-			name: "jsonMergePatch",
-			fn: func(args []any) (any, error) {
+			Name: "jsonMergePatch",
+			Fn: func(args []any) (any, error) {
 				if len(args) != 2 {
 					return nil, fmt.Errorf("%w: jsonMergePatch needs 2 arguments", confengine.ErrInvalidArgs)
 				}
 				return kjson.MergePatch(args[0], args[1]), nil
 			},
-			params: []string{"a", "b"},
+			Params: []string{"a", "b"},
 		},
 		{
-			name: "pathJoin",
-			fn: func(args []any) (any, error) {
+			Name: "pathJoin",
+			Fn: func(args []any) (any, error) {
 				if len(args) != 1 {
 					return nil, fmt.Errorf("%w: pathJoin needs 1 argument", confengine.ErrInvalidArgs)
 				}
 				var segments []string
 				if err := mapstructure.Decode(args[0], &segments); err != nil {
-					return nil, fmt.Errorf("%w: Failed to decode path segments: %w", confengine.ErrInvalidArgs, err)
+					return nil, fmt.Errorf("%w: Path segments must be an array of strings: %w", confengine.ErrInvalidArgs, err)
 				}
 				return path.Join(segments...), nil
 			},
-			params: []string{"v"},
+			Params: []string{"v"},
 		},
 	}, e.nativeFuncs...) {
 		paramstr := ""
 		var params ast.Identifiers
-		if len(v.params) > 0 {
-			paramstr = strings.Join(v.params, ", ")
-			params = make(ast.Identifiers, 0, len(v.params))
-			for _, i := range v.params {
+		if len(v.Params) > 0 {
+			paramstr = strings.Join(v.Params, ", ")
+			params = make(ast.Identifiers, 0, len(v.Params))
+			for _, i := range v.Params {
 				params = append(params, ast.Identifier(i))
 			}
 		}
 		vm.NativeFunction(&jsonnet.NativeFunction{
-			Name:   v.name,
-			Func:   v.fn,
+			Name:   v.Name,
+			Func:   v.Fn,
 			Params: params,
 		})
-		stdlib.WriteString(v.name)
+		stdlib.WriteString(v.Name)
 		stdlib.WriteString("(")
 		stdlib.WriteString(paramstr)
 		stdlib.WriteString(`):: std.native("`)
-		stdlib.WriteString(v.name)
+		stdlib.WriteString(v.Name)
 		stdlib.WriteString(`")(`)
 		stdlib.WriteString(paramstr)
 		stdlib.WriteString("),\n")

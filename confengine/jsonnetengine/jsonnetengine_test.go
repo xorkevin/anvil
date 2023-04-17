@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"xorkevin.dev/anvil/util/kjson"
 )
 
 func TestEngine(t *testing.T) {
@@ -42,7 +43,8 @@ local world = import 'subdir/world.libsonnet';
   "str": anvil.jsonMarshal({
     "foo": "bar",
   }),
-  "foo": anvil.jsonUnmarshal('{"foo":"bar"}'),
+  "foo": anvil.jsonUnmarshal('{"foo":1}'),
+  "bar": 2,
   "name": anvil.pathJoin(['abc', 'def']),
   "obj": anvil.jsonMergePatch(
     {
@@ -91,8 +93,9 @@ local vars = import '/vars.libsonnet';
 				"hello": "world",
 				"str":   "{\"foo\":\"bar\"}\n",
 				"foo": map[string]any{
-					"foo": "bar",
+					"foo": json.Number("1"),
 				},
+				"bar":  json.Number("2"),
 				"name": "abc/def",
 				"obj": map[string]any{
 					"foo": map[string]any{
@@ -134,7 +137,7 @@ local vars = import '/vars.libsonnet';
 				assert.Equal(tc.Expected, b.String())
 			} else {
 				var out any
-				assert.NoError(json.Unmarshal(b.Bytes(), &out))
+				assert.NoError(kjson.Unmarshal(b.Bytes(), &out))
 				assert.Equal(tc.Expected, out)
 			}
 		})

@@ -2,6 +2,7 @@ package starlarkengine
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -22,10 +23,19 @@ import (
 )
 
 type (
+	// Engine is a starlark script engine
 	Engine struct {
 		fsys             fs.FS
 		libname          string
 		configHTTPClient configHTTPClient
+		nativeFuncs      []NativeFunc
+	}
+
+	// NativeFunc is a starlark function implemented in go
+	NativeFunc struct {
+		Name   string
+		Fn     func(ctx context.Context, args []any) (any, error)
+		Params []string
 	}
 
 	Opt = func(e *Engine)
@@ -71,12 +81,85 @@ func OptHttpClientTimeout(t time.Duration) Opt {
 	}
 }
 
+func OptNativeFuncs(fns []NativeFunc) Opt {
+	return func(e *Engine) {
+		e.nativeFuncs = fns
+	}
+}
+
 type (
 	Builder []Opt
 )
 
 func (b Builder) Build(fsys fs.FS) (scriptengine.ScriptEngine, error) {
 	return New(fsys, b...), nil
+}
+
+func (f NativeFunc) call(t *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	ctx, ok := t.Local("ctx").(context.Context)
+	if !ok {
+		return nil, errors.New("No thread ctx")
+	}
+
+	sargs := make([]starlark.Value, len(f.Params))
+	sparams := make([]any, 0, len(f.Params)*2)
+	for n, i := range f.Params {
+		sparams = append(sparams, i, &sargs[n])
+	}
+	if err := starlark.UnpackArgs(f.Name, args, kwargs, sparams...); err != nil {
+		return nil, fmt.Errorf("%w: %w", scriptengine.ErrInvalidArgs, err)
+	}
+
+	gargs := make([]any, 0, len(sargs))
+	ss := stackset.NewAny()
+	for _, i := range sargs {
+		v, err := starlarkToGoValue(i, ss)
+		if err != nil {
+			return nil, fmt.Errorf("Failed converting starlark arg values to go values: %w", err)
+		}
+		gargs = append(gargs, v)
+	}
+
+	ret, err := f.Fn(ctx, gargs)
+	if err != nil {
+		return nil, err
+	}
+
+	sret, err := goToStarlarkValue(ret, ss)
+	if err != nil {
+		return nil, fmt.Errorf("Failed converting go returned values to starlark values: %w", err)
+	}
+	return sret, nil
+}
+
+func (e *Engine) createModLoader(args map[string]any, stdout io.Writer) *modLoader {
+	baseMod := starlark.StringDict{}
+	for _, v := range append(universeLibBase{
+		root: e.fsys,
+		args: args,
+	}.mod(), e.nativeFuncs...) {
+		baseMod[v.Name] = starlark.NewBuiltin(v.Name, v.call)
+	}
+	return &modLoader{
+		root:     e.fsys,
+		modCache: map[string]*loadedModule{},
+		set:      stackset.New[string](),
+		stdout:   stdout,
+		universe: map[string]starlark.StringDict{
+			e.libname + ":json":   starjson.Module.Members,
+			e.libname + ":math":   starmath.Module.Members,
+			e.libname + ":time":   startime.Module.Members,
+			e.libname:             baseMod,
+			e.libname + ":crypto": universeLibCrypto{}.mod(),
+			e.libname + ":vault": universeLibVault{
+				httpClient: newHTTPClient(e.configHTTPClient),
+			}.mod(),
+		},
+		globals: starlark.StringDict{
+			"struct": starlark.NewBuiltin("struct", starlarkstruct.Make),
+			"module": starlark.NewBuiltin("module", starlarkstruct.MakeModule),
+		},
+	}
 }
 
 func (w writerPrinter) print(_ *starlark.Thread, msg string) {
@@ -92,32 +175,6 @@ type (
 
 func (e errImportCycle) Error() string {
 	return "Import cycle"
-}
-
-func (e *Engine) createModLoader(args *starlark.Dict, stdout io.Writer) *modLoader {
-	return &modLoader{
-		root:     e.fsys,
-		modCache: map[string]*loadedModule{},
-		set:      stackset.New[string](),
-		stdout:   stdout,
-		universe: map[string]starlark.StringDict{
-			e.libname + ":json": starjson.Module.Members,
-			e.libname + ":math": starmath.Module.Members,
-			e.libname + ":time": startime.Module.Members,
-			e.libname: universeLibBase{
-				root: e.fsys,
-				args: args,
-			}.mod(),
-			e.libname + ":crypto": universeLibCrypto{}.mod(),
-			e.libname + ":vault": universeLibVault{
-				httpClient: newHTTPClient(e.configHTTPClient),
-			}.mod(),
-		},
-		globals: starlark.StringDict{
-			"struct": starlark.NewBuiltin("struct", starlarkstruct.Make),
-			"module": starlark.NewBuiltin("module", starlarkstruct.MakeModule),
-		},
-	}
 }
 
 func (l *modLoader) getGlobals(module string) starlark.StringDict {
@@ -217,11 +274,7 @@ func (e *Engine) Exec(ctx context.Context, name string, fn string, args map[stri
 	if err != nil {
 		return nil, kerrors.WithMsg(err, "Failed converting go value args to starlark values")
 	}
-	sdargs, ok := sargs.(*starlark.Dict)
-	if !ok {
-		return nil, kerrors.WithMsg(err, "Failed starlark args malformed")
-	}
-	ml := e.createModLoader(sdargs, stdout)
+	ml := e.createModLoader(args, stdout)
 	vals, err := ml.load(ctx, "", name)
 	if err != nil {
 		return nil, err
@@ -233,11 +286,13 @@ func (e *Engine) Exec(ctx context.Context, name string, fn string, args map[stri
 	if _, ok := f.(starlark.Callable); !ok {
 		return nil, kerrors.WithMsg(nil, fmt.Sprintf("Global %s in module %s is not callable", fn, name))
 	}
-	sv, err := starlark.Call(&starlark.Thread{
+	thread := &starlark.Thread{
 		Name:  name + "." + fn,
 		Print: writerPrinter{w: stdout}.print,
 		Load:  errLoader,
-	}, f, starlark.Tuple{sargs}, nil)
+	}
+	thread.SetLocal("ctx", ctx)
+	sv, err := starlark.Call(thread, f, starlark.Tuple{sargs}, nil)
 	if err != nil {
 		return nil, kerrors.WithMsg(err, fmt.Sprintf("Failed executing function %s in module %s", fn, name))
 	}
@@ -370,6 +425,23 @@ func goToStarlarkValue(x any, ss *stackset.Any) (_ starlark.Value, retErr error)
 		return starlark.Float(x), nil
 	case float64:
 		return starlark.Float(x), nil
+	case json.Number:
+		// json makes no distinction between floats and ints
+		if strings.ContainsAny(x.String(), ".eE") {
+			// assume any number with a decimal point or exponential notation is a
+			// float
+			v, err := x.Float64()
+			if err != nil {
+				return nil, err
+			}
+			return starlark.Float(v), nil
+		} else {
+			v, err := x.Int64()
+			if err != nil {
+				return nil, err
+			}
+			return starlark.MakeInt64(v), nil
+		}
 	case string:
 		return starlark.String(x), nil
 	case map[string]any:
