@@ -66,5 +66,47 @@ func (m Map) Build(kind string, fsys fs.FS) (WorkflowEngine, error) {
 
 type (
 	// EventHistory is an append only log of workflow events
-	EventHistory struct{}
+	EventHistory struct {
+		idx     int
+		history []Event
+	}
+
+	// Event is a workflow event
+	Event struct {
+		Key   any
+		Value any
+	}
 )
+
+// NewEventHistory creates a new [EventHistory]
+func NewEventHistory() *EventHistory {
+	return &EventHistory{
+		idx:     0,
+		history: nil,
+	}
+}
+
+func (h *EventHistory) Next() (Event, bool) {
+	if h.idx >= len(h.history) {
+		return Event{}, false
+	}
+	e := h.history[h.idx]
+	h.idx++
+	return e, true
+}
+
+func (h *EventHistory) Push(key any, value any) {
+	h.history = append(h.history, Event{
+		Key:   key,
+		Value: value,
+	})
+	h.idx = len(h.history)
+}
+
+func (h *EventHistory) Start() {
+	h.idx = 0
+}
+
+func (h *EventHistory) Index() int {
+	return h.idx
+}

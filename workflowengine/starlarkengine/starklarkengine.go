@@ -51,6 +51,7 @@ type (
 		modCache map[string]*loadedModule
 		set      *stackset.StackSet[string]
 		stdout   io.Writer
+		events   *workflowengine.EventHistory
 		universe map[string]starlark.StringDict
 		globals  starlark.StringDict
 	}
@@ -134,8 +135,13 @@ func (f NativeFunc) call(t *starlark.Thread, _ *starlark.Builtin, args starlark.
 }
 
 func (e *Engine) createModLoader(args map[string]any, stdout io.Writer) *modLoader {
+	ev := workflowengine.NewEventHistory()
 	baseMod := starlark.StringDict{}
-	subMods := map[string]starlark.StringDict{}
+	subMods := map[string]starlark.StringDict{
+		"workflow": universeLibWF{
+			events: ev,
+		}.mod(),
+	}
 	for _, v := range append(universeLibBase{
 		root:       e.fsys,
 		httpClient: newHTTPClient(e.configHTTPClient),
@@ -158,6 +164,7 @@ func (e *Engine) createModLoader(args map[string]any, stdout io.Writer) *modLoad
 		modCache: map[string]*loadedModule{},
 		set:      stackset.New[string](),
 		stdout:   stdout,
+		events:   ev,
 		universe: map[string]starlark.StringDict{
 			e.libname + ":json": starjson.Module.Members,
 			e.libname + ":math": starmath.Module.Members,
