@@ -1,4 +1,4 @@
-package scriptengine
+package workflowengine
 
 import (
 	"context"
@@ -30,36 +30,41 @@ func (e errInvalidArgs) Error() string {
 }
 
 type (
-	// ScriptEngine is a script engine
-	ScriptEngine interface {
+	// WorkflowEngine is a workflow engine
+	WorkflowEngine interface {
 		Exec(ctx context.Context, name string, fn string, args map[string]any, stdout io.Writer) (any, error)
 	}
 
-	// Builder builds a [ScriptEngine]
+	// Builder builds a [WorkflowEngine]
 	Builder interface {
-		Build(fsys fs.FS) (ScriptEngine, error)
+		Build(fsys fs.FS) (WorkflowEngine, error)
 	}
 
 	// BuilderFunc implements Builder for a function
-	BuilderFunc func(fsys fs.FS) (ScriptEngine, error)
+	BuilderFunc func(fsys fs.FS) (WorkflowEngine, error)
 
 	// Map is a map from kinds to [Builder]
 	Map map[string]Builder
 )
 
-func (f BuilderFunc) Build(fsys fs.FS) (ScriptEngine, error) {
+func (f BuilderFunc) Build(fsys fs.FS) (WorkflowEngine, error) {
 	return f(fsys)
 }
 
-// Build builds a [ScriptEngine] for a known kind
-func (m Map) Build(kind string, fsys fs.FS) (ScriptEngine, error) {
+// Build builds a [WorkflowEngine] for a known kind
+func (m Map) Build(kind string, fsys fs.FS) (WorkflowEngine, error) {
 	a, ok := m[kind]
 	if !ok {
 		return nil, kerrors.WithKind(nil, ErrNotSupported, fmt.Sprintf("Engine kind not supported: %s", kind))
 	}
 	eng, err := a.Build(fsys)
 	if err != nil {
-		return nil, kerrors.WithMsg(err, "Failed to build script engine")
+		return nil, kerrors.WithMsg(err, "Failed to build workflow engine")
 	}
 	return eng, nil
 }
+
+type (
+	// EventHistory is an append only log of workflow events
+	EventHistory struct{}
+)

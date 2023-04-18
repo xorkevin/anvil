@@ -17,13 +17,13 @@ import (
 	startime "go.starlark.net/lib/time"
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
-	"xorkevin.dev/anvil/scriptengine"
 	"xorkevin.dev/anvil/util/stackset"
+	"xorkevin.dev/anvil/workflowengine"
 	"xorkevin.dev/kerrors"
 )
 
 type (
-	// Engine is a starlark script engine
+	// Engine is a starlark workflow engine
 	Engine struct {
 		fsys             fs.FS
 		libname          string
@@ -92,7 +92,7 @@ type (
 	Builder []Opt
 )
 
-func (b Builder) Build(fsys fs.FS) (scriptengine.ScriptEngine, error) {
+func (b Builder) Build(fsys fs.FS) (workflowengine.WorkflowEngine, error) {
 	return New(fsys, b...), nil
 }
 
@@ -108,7 +108,7 @@ func (f NativeFunc) call(t *starlark.Thread, _ *starlark.Builtin, args starlark.
 		sparams = append(sparams, i, &sargs[n])
 	}
 	if err := starlark.UnpackArgs(f.Name, args, kwargs, sparams...); err != nil {
-		return nil, fmt.Errorf("%w: %w", scriptengine.ErrInvalidArgs, err)
+		return nil, fmt.Errorf("%w: %w", workflowengine.ErrInvalidArgs, err)
 	}
 
 	gargs := make([]any, 0, len(sargs))

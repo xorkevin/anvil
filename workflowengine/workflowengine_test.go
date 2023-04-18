@@ -1,4 +1,4 @@
-package scriptengine
+package workflowengine
 
 import (
 	"context"
@@ -31,7 +31,7 @@ func (e mockEngine) Exec(ctx context.Context, name string, fn string, args map[s
 	return b.String(), nil
 }
 
-func TestScriptEngine(t *testing.T) {
+func TestWorkflowEngine(t *testing.T) {
 	t.Parallel()
 
 	for _, tc := range []struct {
@@ -42,7 +42,7 @@ func TestScriptEngine(t *testing.T) {
 		Expected any
 	}{
 		{
-			Name:     "executes scriptengine",
+			Name:     "executes workflow engine",
 			Filename: "foo.mockengine",
 			Main:     "main",
 			Args: map[string]any{
@@ -57,7 +57,7 @@ func TestScriptEngine(t *testing.T) {
 			assert := require.New(t)
 
 			engines := Map{
-				"mockengine": BuilderFunc(func(fsys fs.FS) (ScriptEngine, error) {
+				"mockengine": BuilderFunc(func(fsys fs.FS) (WorkflowEngine, error) {
 					return mockEngine{}, nil
 				}),
 			}

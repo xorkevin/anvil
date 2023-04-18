@@ -19,8 +19,8 @@ import (
 
 	"github.com/mitchellh/mapstructure"
 	"xorkevin.dev/anvil/confengine"
-	"xorkevin.dev/anvil/scriptengine"
 	"xorkevin.dev/anvil/util/kjson"
+	"xorkevin.dev/anvil/workflowengine"
 )
 
 type (
@@ -149,10 +149,10 @@ func (l *universeLibBase) getargs(ctx context.Context, args []any) (any, error) 
 func (l *universeLibBase) sleep(ctx context.Context, args []any) (any, error) {
 	ms, ok := args[0].(int)
 	if !ok {
-		return nil, fmt.Errorf("%w: Sleep time must be int", scriptengine.ErrInvalidArgs)
+		return nil, fmt.Errorf("%w: Sleep time must be int", workflowengine.ErrInvalidArgs)
 	}
 	if ms < 1 {
-		return nil, fmt.Errorf("%w: Must sleep for a positive amount of time", scriptengine.ErrInvalidArgs)
+		return nil, fmt.Errorf("%w: Must sleep for a positive amount of time", workflowengine.ErrInvalidArgs)
 	}
 	select {
 	case <-ctx.Done():
@@ -165,7 +165,7 @@ func (l *universeLibBase) sleep(ctx context.Context, args []any) (any, error) {
 func (l *universeLibBase) getenv(ctx context.Context, args []any) (any, error) {
 	name, ok := args[0].(string)
 	if !ok {
-		return nil, fmt.Errorf("%w: Env name must be string", scriptengine.ErrInvalidArgs)
+		return nil, fmt.Errorf("%w: Env name must be string", workflowengine.ErrInvalidArgs)
 	}
 	v, ok := os.LookupEnv(name)
 	if !ok {
@@ -185,10 +185,10 @@ func (l *universeLibBase) jsonMarshal(ctx context.Context, args []any) (any, err
 func (l *universeLibBase) jsonUnmarshal(ctx context.Context, args []any) (any, error) {
 	s, ok := args[0].(string)
 	if !ok {
-		return nil, fmt.Errorf("%w: JSON must be string", scriptengine.ErrInvalidArgs)
+		return nil, fmt.Errorf("%w: JSON must be string", workflowengine.ErrInvalidArgs)
 	}
 	if s == "" {
-		return nil, fmt.Errorf("%w: Empty json string", scriptengine.ErrInvalidArgs)
+		return nil, fmt.Errorf("%w: Empty json string", workflowengine.ErrInvalidArgs)
 	}
 	var v any
 	if err := kjson.Unmarshal([]byte(s), &v); err != nil {
@@ -212,7 +212,7 @@ func (l *universeLibBase) pathJoin(ctx context.Context, args []any) (any, error)
 func (l *universeLibBase) readfile(ctx context.Context, args []any) (any, error) {
 	name, ok := args[0].(string)
 	if !ok {
-		return nil, fmt.Errorf("%w: File name must be a string", scriptengine.ErrInvalidArgs)
+		return nil, fmt.Errorf("%w: File name must be a string", workflowengine.ErrInvalidArgs)
 	}
 	b, err := os.ReadFile(filepath.FromSlash(name))
 	if err != nil {
@@ -224,7 +224,7 @@ func (l *universeLibBase) readfile(ctx context.Context, args []any) (any, error)
 func (l *universeLibBase) readmodfile(ctx context.Context, args []any) (any, error) {
 	name, ok := args[0].(string)
 	if !ok {
-		return nil, fmt.Errorf("%w: File name must be a string", scriptengine.ErrInvalidArgs)
+		return nil, fmt.Errorf("%w: File name must be a string", workflowengine.ErrInvalidArgs)
 	}
 	b, err := fs.ReadFile(l.root, name)
 	if err != nil {
@@ -236,11 +236,11 @@ func (l *universeLibBase) readmodfile(ctx context.Context, args []any) (any, err
 func (l *universeLibBase) writefile(ctx context.Context, args []any) (any, error) {
 	name, ok := args[0].(string)
 	if !ok {
-		return nil, fmt.Errorf("%w: File name must be a string", scriptengine.ErrInvalidArgs)
+		return nil, fmt.Errorf("%w: File name must be a string", workflowengine.ErrInvalidArgs)
 	}
 	data, ok := args[1].(string)
 	if !ok {
-		return nil, fmt.Errorf("%w: File data must be a string", scriptengine.ErrInvalidArgs)
+		return nil, fmt.Errorf("%w: File data must be a string", workflowengine.ErrInvalidArgs)
 	}
 	if err := os.WriteFile(filepath.FromSlash(name), []byte(data), 0o644); err != nil {
 		return nil, fmt.Errorf("Failed writing file %s: %w", name, err)
@@ -251,7 +251,7 @@ func (l *universeLibBase) writefile(ctx context.Context, args []any) (any, error
 func (l *universeLibBase) gotpl(ctx context.Context, args []any) (any, error) {
 	tmpl, ok := args[0].(string)
 	if !ok {
-		return nil, fmt.Errorf("%w: Template must be a string", scriptengine.ErrInvalidArgs)
+		return nil, fmt.Errorf("%w: Template must be a string", workflowengine.ErrInvalidArgs)
 	}
 	t, err := template.New("tmpl").Parse(tmpl)
 	if err != nil {
@@ -267,10 +267,10 @@ func (l *universeLibBase) gotpl(ctx context.Context, args []any) (any, error) {
 func (l *universeLibBase) genpass(ctx context.Context, args []any) (any, error) {
 	n, ok := args[0].(int)
 	if !ok {
-		return nil, fmt.Errorf("%w: Number of bytes must be an integer", scriptengine.ErrInvalidArgs)
+		return nil, fmt.Errorf("%w: Number of bytes must be an integer", workflowengine.ErrInvalidArgs)
 	}
 	if n < 1 {
-		return nil, fmt.Errorf("%w: Number of bytes must be a positive integer", scriptengine.ErrInvalidArgs)
+		return nil, fmt.Errorf("%w: Number of bytes must be a positive integer", workflowengine.ErrInvalidArgs)
 	}
 	b := make([]byte, n)
 	if _, err := rand.Reader.Read(b); err != nil {
@@ -287,17 +287,17 @@ const (
 func (l *universeLibBase) genrsa(ctx context.Context, args []any) (any, error) {
 	n, ok := args[0].(int)
 	if !ok {
-		return nil, fmt.Errorf("%w: Key size must be an integer", scriptengine.ErrInvalidArgs)
+		return nil, fmt.Errorf("%w: Key size must be an integer", workflowengine.ErrInvalidArgs)
 	}
 	blocktype := pemBlockTypePrivateKey
 	if args[1] != nil {
 		var ok bool
 		blocktype, ok = args[1].(string)
 		if !ok {
-			return nil, fmt.Errorf("%w: PEM block type must be a string", scriptengine.ErrInvalidArgs)
+			return nil, fmt.Errorf("%w: PEM block type must be a string", workflowengine.ErrInvalidArgs)
 		}
 		if blocktype == "" {
-			return nil, fmt.Errorf("%w: Empty PEM block type", scriptengine.ErrInvalidArgs)
+			return nil, fmt.Errorf("%w: Empty PEM block type", workflowengine.ErrInvalidArgs)
 		}
 	}
 	key, err := rsa.GenerateKey(rand.Reader, n)
@@ -330,7 +330,7 @@ func (l *universeLibBase) readVaultCfg(vaultcfg any) (*vaultCfg, error) {
 		return nil, fmt.Errorf("%w: Invalid vault cfg: %w", confengine.ErrInvalidArgs, err)
 	}
 	if cfg.Addr == "" {
-		return nil, fmt.Errorf("%w: Missing vault addr", scriptengine.ErrInvalidArgs)
+		return nil, fmt.Errorf("%w: Missing vault addr", workflowengine.ErrInvalidArgs)
 	}
 	return cfg, nil
 }
@@ -338,24 +338,24 @@ func (l *universeLibBase) readVaultCfg(vaultcfg any) (*vaultCfg, error) {
 func (l *universeLibBase) authkube(ctx context.Context, args []any) (any, error) {
 	role, ok := args[0].(string)
 	if !ok {
-		return nil, fmt.Errorf("%w: Kube role must be a string", scriptengine.ErrInvalidArgs)
+		return nil, fmt.Errorf("%w: Kube role must be a string", workflowengine.ErrInvalidArgs)
 	}
 	if role == "" {
-		return nil, fmt.Errorf("%w: Empty role", scriptengine.ErrInvalidArgs)
+		return nil, fmt.Errorf("%w: Empty role", workflowengine.ErrInvalidArgs)
 	}
 	cfg, err := l.readVaultCfg(args[1])
 	if err != nil {
 		return nil, err
 	}
 	if cfg.KubeMount == "" {
-		return nil, fmt.Errorf("%w: Invalid vault kube auth mount", scriptengine.ErrInvalidArgs)
+		return nil, fmt.Errorf("%w: Invalid vault kube auth mount", workflowengine.ErrInvalidArgs)
 	}
 	satokenfile := "/var/run/secrets/kubernetes.io/serviceaccount/token"
 	if args[2] != nil {
 		var ok bool
 		satokenfile, ok = args[2].(string)
 		if !ok {
-			return nil, fmt.Errorf("%w: Service account token file must be a string", scriptengine.ErrInvalidArgs)
+			return nil, fmt.Errorf("%w: Service account token file must be a string", workflowengine.ErrInvalidArgs)
 		}
 	}
 
@@ -407,7 +407,7 @@ func (l *universeLibBase) authkube(ctx context.Context, args []any) (any, error)
 
 func (l *universeLibBase) doVaultReq(ctx context.Context, name string, cfg *vaultCfg, method string, path string, body any, retRes map[string]any, resbody any) (bool, error) {
 	if cfg.Token == "" {
-		return true, fmt.Errorf("%w: Missing vault token", scriptengine.ErrInvalidArgs)
+		return true, fmt.Errorf("%w: Missing vault token", workflowengine.ErrInvalidArgs)
 	}
 	req, err := l.httpClient.ReqJSON(http.MethodPost, fmt.Sprintf("%s/%s", cfg.Addr, path), body)
 	if err != nil {
@@ -435,28 +435,28 @@ func (l *universeLibBase) doVaultReq(ctx context.Context, name string, cfg *vaul
 func (l *universeLibBase) kvput(ctx context.Context, args []any) (any, error) {
 	key, ok := args[0].(string)
 	if !ok {
-		return nil, fmt.Errorf("%w: Key must be a string", scriptengine.ErrInvalidArgs)
+		return nil, fmt.Errorf("%w: Key must be a string", workflowengine.ErrInvalidArgs)
 	}
 	if key == "" {
-		return nil, fmt.Errorf("%w: Empty key", scriptengine.ErrInvalidArgs)
+		return nil, fmt.Errorf("%w: Empty key", workflowengine.ErrInvalidArgs)
 	}
 	value, ok := args[1].(map[string]any)
 	if !ok {
-		return nil, fmt.Errorf("%w: Value must be an object", scriptengine.ErrInvalidArgs)
+		return nil, fmt.Errorf("%w: Value must be an object", workflowengine.ErrInvalidArgs)
 	}
 	cfg, err := l.readVaultCfg(args[2])
 	if err != nil {
 		return nil, err
 	}
 	if cfg.KVMount == "" {
-		return nil, fmt.Errorf("%w: Missing vault kv mount", scriptengine.ErrInvalidArgs)
+		return nil, fmt.Errorf("%w: Missing vault kv mount", workflowengine.ErrInvalidArgs)
 	}
 	cas := -1
 	if args[3] != nil {
 		var ok bool
 		cas, ok = args[3].(int)
 		if !ok {
-			return nil, fmt.Errorf("%w: CAS must be an integer", scriptengine.ErrInvalidArgs)
+			return nil, fmt.Errorf("%w: CAS must be an integer", workflowengine.ErrInvalidArgs)
 		}
 	}
 	body := struct {
@@ -495,17 +495,17 @@ func (l *universeLibBase) kvput(ctx context.Context, args []any) (any, error) {
 func (l *universeLibBase) kvget(ctx context.Context, args []any) (any, error) {
 	key, ok := args[0].(string)
 	if !ok {
-		return nil, fmt.Errorf("%w: Key must be a string", scriptengine.ErrInvalidArgs)
+		return nil, fmt.Errorf("%w: Key must be a string", workflowengine.ErrInvalidArgs)
 	}
 	if key == "" {
-		return nil, fmt.Errorf("%w: Empty key", scriptengine.ErrInvalidArgs)
+		return nil, fmt.Errorf("%w: Empty key", workflowengine.ErrInvalidArgs)
 	}
 	cfg, err := l.readVaultCfg(args[1])
 	if err != nil {
 		return nil, err
 	}
 	if cfg.KVMount == "" {
-		return nil, fmt.Errorf("%w: Missing vault kv mount", scriptengine.ErrInvalidArgs)
+		return nil, fmt.Errorf("%w: Missing vault kv mount", workflowengine.ErrInvalidArgs)
 	}
 	retRes := map[string]any{}
 	var resbody struct {
@@ -536,21 +536,21 @@ func (l *universeLibBase) kvget(ctx context.Context, args []any) (any, error) {
 func (l *universeLibBase) dbconfigput(ctx context.Context, args []any) (any, error) {
 	name, ok := args[0].(string)
 	if !ok {
-		return nil, fmt.Errorf("%w: Name must be a string", scriptengine.ErrInvalidArgs)
+		return nil, fmt.Errorf("%w: Name must be a string", workflowengine.ErrInvalidArgs)
 	}
 	if name == "" {
-		return nil, fmt.Errorf("%w: Empty name", scriptengine.ErrInvalidArgs)
+		return nil, fmt.Errorf("%w: Empty name", workflowengine.ErrInvalidArgs)
 	}
 	dbcfg, ok := args[1].(map[string]any)
 	if !ok {
-		return nil, fmt.Errorf("%w: DB config must be an object", scriptengine.ErrInvalidArgs)
+		return nil, fmt.Errorf("%w: DB config must be an object", workflowengine.ErrInvalidArgs)
 	}
 	cfg, err := l.readVaultCfg(args[2])
 	if err != nil {
 		return nil, err
 	}
 	if cfg.DBMount == "" {
-		return nil, fmt.Errorf("%w: Missing vault db mount", scriptengine.ErrInvalidArgs)
+		return nil, fmt.Errorf("%w: Missing vault db mount", workflowengine.ErrInvalidArgs)
 	}
 	retRes := map[string]any{}
 	var resbody any
@@ -566,21 +566,21 @@ func (l *universeLibBase) dbconfigput(ctx context.Context, args []any) (any, err
 func (l *universeLibBase) dbroleput(ctx context.Context, args []any) (any, error) {
 	name, ok := args[0].(string)
 	if !ok {
-		return nil, fmt.Errorf("%w: Name must be a string", scriptengine.ErrInvalidArgs)
+		return nil, fmt.Errorf("%w: Name must be a string", workflowengine.ErrInvalidArgs)
 	}
 	if name == "" {
-		return nil, fmt.Errorf("%w: Empty name", scriptengine.ErrInvalidArgs)
+		return nil, fmt.Errorf("%w: Empty name", workflowengine.ErrInvalidArgs)
 	}
 	rolecfg, ok := args[1].(map[string]any)
 	if !ok {
-		return nil, fmt.Errorf("%w: Role config must be an object", scriptengine.ErrInvalidArgs)
+		return nil, fmt.Errorf("%w: Role config must be an object", workflowengine.ErrInvalidArgs)
 	}
 	cfg, err := l.readVaultCfg(args[2])
 	if err != nil {
 		return nil, err
 	}
 	if cfg.DBMount == "" {
-		return nil, fmt.Errorf("%w: Missing vault db mount", scriptengine.ErrInvalidArgs)
+		return nil, fmt.Errorf("%w: Missing vault db mount", workflowengine.ErrInvalidArgs)
 	}
 	retRes := map[string]any{}
 	var resbody any
