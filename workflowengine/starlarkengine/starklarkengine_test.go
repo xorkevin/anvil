@@ -12,7 +12,19 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"xorkevin.dev/anvil/workflowengine"
 )
+
+type (
+	testNativeFn struct {
+		count int
+	}
+)
+
+func (f *testNativeFn) call(ctx context.Context, args []any) (any, error) {
+	f.count++
+	return "bar", nil
+}
 
 func TestEngine(t *testing.T) {
 	t.Parallel()
@@ -35,24 +47,33 @@ func TestEngine(t *testing.T) {
 		Expected      any
 		ExpectedFiles map[string]string
 		Log           string
+		TestFnCount   int
+		History       []workflowengine.Event
 	}{
 		{
 			Name: "executes starlark",
 			Fsys: fstest.MapFS{
 				"main.star": &fstest.MapFile{
 					Data: []byte(`
-load("anvil:std", "os", "json")
+load("anvil:std", "workflow", "os", "json", "testmod")
 load("subdir/hello.star", "hello_msg")
+
+def customactivity(file, foo, name):
+  os.writefile(file, json.marshal({ "msg": hello_msg(name) }))
+  return {
+    "b": foo,
+    "c": testmod.testfn(),
+  }
 
 def main(args):
   file = args["file"]
   if not file.startswith("/tmp/"):
     fail("Invalid file")
   foo = os.readfile(args["inp"])
-  os.writefile(file, json.marshal({ "msg": hello_msg(args["name"]) }))
+  v = workflow.execactivity(customactivity, file, foo, args["name"])
   return json.mergepatch(
     json.unmarshal("""{ "a": 1, "b": "b" }"""),
-    { "b": foo, "c": "bar" },
+    v,
   )
 `),
 					Mode:    filemode,
@@ -91,7 +112,28 @@ def hello_msg(name):
 			ExpectedFiles: map[string]string{
 				"out.json": "{\"msg\":\"Hello, world\"}\n",
 			},
-			Log: "writing message from dir subdir\n",
+			Log:         "writing message from dir subdir\n",
+			TestFnCount: 1,
+			History: []workflowengine.Event{
+				{
+					Key: eventActivityArgsKey{},
+					Value: eventActivityArgs{
+						name:   "customactivity",
+						args:   []any{path.Join(filepath.ToSlash(tempDir), "out.json"), "foo", "world"},
+						kwargs: map[string]any{},
+					},
+				},
+				{
+					Key: eventActivityRetKey{},
+					Value: eventActivityRet{
+						name: "customactivity",
+						ret: map[string]any{
+							"b": "foo",
+							"c": "bar",
+						},
+					},
+				},
+			},
 		},
 	} {
 		tc := tc
@@ -99,17 +141,39 @@ def hello_msg(name):
 			t.Parallel()
 			assert := require.New(t)
 
-			eng, err := Builder{}.Build(tc.Fsys)
+			var testFn testNativeFn
+
+			eng, err := Builder{OptNativeFuncs([]NativeFunc{
+				{
+					Mod:  "testmod",
+					Name: "testfn",
+					Fn:   testFn.call,
+				},
+			})}.Build(tc.Fsys)
 			assert.NoError(err)
+
 			var log strings.Builder
-			out, err := eng.Exec(context.Background(), tc.File, tc.Main, tc.Args, &log)
-			assert.NoError(err)
-			assert.Equal(tc.Expected, out)
-			assert.Equal(tc.Log, log.String())
-			for k, v := range tc.ExpectedFiles {
-				b, err := os.ReadFile(filepath.Join(tempDir, filepath.FromSlash(k)))
+			events := workflowengine.NewEventHistory()
+			for i := 0; i < 2; i++ {
+				events.Start()
+				out, err := eng.Exec(context.Background(), events, tc.File, tc.Main, tc.Args, &log)
 				assert.NoError(err)
-				assert.Equal(v, string(b))
+				assert.Equal(tc.Expected, out)
+				assert.Equal(tc.Log, log.String())
+				assert.Equal(tc.TestFnCount, testFn.count)
+				for k, v := range tc.ExpectedFiles {
+					b, err := os.ReadFile(filepath.Join(tempDir, filepath.FromSlash(k)))
+					assert.NoError(err)
+					assert.Equal(v, string(b))
+				}
+				events.Start()
+				for _, j := range tc.History {
+					e, ok := events.Next()
+					assert.True(ok)
+					assert.Equal(j, e)
+				}
+				_, ok := events.Next()
+				assert.False(ok)
 			}
 		})
 	}

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"net/http"
 	"path"
 	"reflect"
 	"strings"
@@ -51,7 +52,6 @@ type (
 		modCache map[string]*loadedModule
 		set      *stackset.StackSet[string]
 		stdout   io.Writer
-		events   *workflowengine.EventHistory
 		universe map[string]starlark.StringDict
 		globals  starlark.StringDict
 	}
@@ -68,18 +68,28 @@ type (
 )
 
 func New(fsys fs.FS, opts ...Opt) *Engine {
-	return &Engine{
+	eng := &Engine{
 		libname: "anvil:std",
 		fsys:    fsys,
 		configHTTPClient: configHTTPClient{
 			timeout: 5 * time.Second,
 		},
 	}
+	for _, i := range opts {
+		i(eng)
+	}
+	return eng
 }
 
 func OptHttpClientTimeout(t time.Duration) Opt {
 	return func(e *Engine) {
 		e.configHTTPClient.timeout = t
+	}
+}
+
+func OptHttpClientTransport(t http.RoundTripper) Opt {
+	return func(e *Engine) {
+		e.configHTTPClient.transport = t
 	}
 }
 
@@ -134,12 +144,11 @@ func (f NativeFunc) call(t *starlark.Thread, _ *starlark.Builtin, args starlark.
 	return sret, nil
 }
 
-func (e *Engine) createModLoader(args map[string]any, stdout io.Writer) *modLoader {
-	ev := workflowengine.NewEventHistory()
+func (e *Engine) createModLoader(events *workflowengine.EventHistory, args map[string]any, stdout io.Writer) *modLoader {
 	baseMod := starlark.StringDict{}
 	subMods := map[string]starlark.StringDict{
 		"workflow": universeLibWF{
-			events: ev,
+			events: events,
 		}.mod(),
 	}
 	for _, v := range append(universeLibBase{
@@ -164,7 +173,6 @@ func (e *Engine) createModLoader(args map[string]any, stdout io.Writer) *modLoad
 		modCache: map[string]*loadedModule{},
 		set:      stackset.New[string](),
 		stdout:   stdout,
-		events:   ev,
 		universe: map[string]starlark.StringDict{
 			e.libname + ":json": starjson.Module.Members,
 			e.libname + ":math": starmath.Module.Members,
@@ -278,7 +286,7 @@ func errLoader(_ *starlark.Thread, module string) (starlark.StringDict, error) {
 	return nil, ErrNoRuntimeLoad
 }
 
-func (e *Engine) Exec(ctx context.Context, name string, fn string, args map[string]any, stdout io.Writer) (any, error) {
+func (e *Engine) Exec(ctx context.Context, events *workflowengine.EventHistory, name string, fn string, args map[string]any, stdout io.Writer) (any, error) {
 	if args == nil {
 		args = map[string]any{}
 	}
@@ -290,7 +298,7 @@ func (e *Engine) Exec(ctx context.Context, name string, fn string, args map[stri
 	if err != nil {
 		return nil, kerrors.WithMsg(err, "Failed converting go value args to starlark values")
 	}
-	ml := e.createModLoader(args, stdout)
+	ml := e.createModLoader(events, args, stdout)
 	vals, err := ml.load(ctx, "", name)
 	if err != nil {
 		return nil, err

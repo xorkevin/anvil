@@ -15,7 +15,7 @@ type (
 	mockEngine struct{}
 )
 
-func (e mockEngine) Exec(ctx context.Context, name string, fn string, args map[string]any, w io.Writer) (any, error) {
+func (e mockEngine) Exec(ctx context.Context, events *EventHistory, name string, fn string, args map[string]any, w io.Writer) (any, error) {
 	j, err := json.Marshal(args)
 	if err != nil {
 		return nil, err
@@ -63,7 +63,7 @@ func TestWorkflowEngine(t *testing.T) {
 			}
 			eng, err := engines.Build("mockengine", nil)
 			assert.NoError(err)
-			v, err := eng.Exec(context.Background(), tc.Filename, tc.Main, tc.Args, nil)
+			v, err := eng.Exec(context.Background(), NewEventHistory(), tc.Filename, tc.Main, tc.Args, nil)
 			assert.NoError(err)
 			assert.Equal(tc.Expected, v)
 		})

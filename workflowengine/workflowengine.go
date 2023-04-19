@@ -32,7 +32,7 @@ func (e errInvalidArgs) Error() string {
 type (
 	// WorkflowEngine is a workflow engine
 	WorkflowEngine interface {
-		Exec(ctx context.Context, name string, fn string, args map[string]any, stdout io.Writer) (any, error)
+		Exec(ctx context.Context, events *EventHistory, name string, fn string, args map[string]any, stdout io.Writer) (any, error)
 	}
 
 	// Builder builds a [WorkflowEngine]
