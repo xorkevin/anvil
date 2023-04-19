@@ -1,6 +1,7 @@
 package starlarkengine
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"go.starlark.net/starlark"
@@ -65,6 +66,93 @@ func (l *universeLibWF) serializeArgs(ss *stackset.Any, idx int, name string, ar
 	return e, nil
 }
 
+func equalScalar[T comparable](a T, b any) bool {
+	bx, ok := b.(T)
+	if !ok {
+		return false
+	}
+	return a == bx
+}
+
+func deepEqualAny(a, b any) bool {
+	if a == nil && b == nil {
+		return true
+	}
+
+	switch ax := a.(type) {
+	case bool:
+		return equalScalar(ax, b)
+	case int:
+		return equalScalar(ax, b)
+	case int8:
+		return equalScalar(ax, b)
+	case int16:
+		return equalScalar(ax, b)
+	case int32:
+		return equalScalar(ax, b)
+	case int64:
+		return equalScalar(ax, b)
+	case uint:
+		return equalScalar(ax, b)
+	case uint8:
+		return equalScalar(ax, b)
+	case uint16:
+		return equalScalar(ax, b)
+	case uint32:
+		return equalScalar(ax, b)
+	case uint64:
+		return equalScalar(ax, b)
+	case uintptr:
+		return equalScalar(ax, b)
+	case float32:
+		return equalScalar(ax, b)
+	case float64:
+		return equalScalar(ax, b)
+	case json.Number:
+		return equalScalar(ax, b)
+	case string:
+		return equalScalar(ax, b)
+	case map[string]any:
+		{
+			bx, ok := b.(map[string]any)
+			if !ok {
+				return false
+			}
+			if len(ax) != len(bx) {
+				return false
+			}
+			for k, v := range ax {
+				if !deepEqualAny(v, bx[k]) {
+					return false
+				}
+			}
+			return true
+		}
+	case []any:
+		{
+			bx, ok := b.([]any)
+			if !ok {
+				return false
+			}
+			if len(ax) != len(bx) {
+				return false
+			}
+			for n, i := range ax {
+				if !deepEqualAny(i, bx[n]) {
+					return false
+				}
+			}
+			return true
+		}
+	default:
+		return false
+	}
+}
+
+func (e eventActivityArgs) Equal(other eventActivityArgs) bool {
+	return deepEqualAny(e.args, other.args) && deepEqualAny(e.kwargs, other.kwargs)
+}
+
 func (l *universeLibWF) execactivity(t *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	idx := l.events.Index()
 
@@ -83,8 +171,20 @@ func (l *universeLibWF) execactivity(t *starlark.Thread, _ *starlark.Builtin, ar
 	if err != nil {
 		return nil, err
 	}
-	if _, ok := l.events.Next(); ok {
-		// TODO: compare args
+	if e, ok := l.events.Next(); ok {
+		if e.Key != (eventActivityArgsKey{}) {
+			return nil, fmt.Errorf("Args event key mismatch for activity function %s at event log index %d", ea.name, idx)
+		}
+		ev, ok := e.Value.(eventActivityArgs)
+		if !ok {
+			return nil, fmt.Errorf("Args event value type mismatch for activity function %s at event log index %d", ea.name, idx)
+		}
+		if ev.name != ea.name {
+			return nil, fmt.Errorf("Activity function %s name mismatch of %s at event log index %d", ea.name, ev.name, idx)
+		}
+		if !ea.Equal(ev) {
+			return nil, fmt.Errorf("Activity function %s args mismatch at event log index %d", ea.name, idx)
+		}
 	} else {
 		l.events.Push(eventActivityArgsKey{}, ea)
 	}
@@ -93,14 +193,14 @@ func (l *universeLibWF) execactivity(t *starlark.Thread, _ *starlark.Builtin, ar
 		if e.Key != (eventActivityRetKey{}) {
 			return nil, fmt.Errorf("Return event key mismatch for activity function %s at event log index %d", ea.name, idx)
 		}
-		er, ok := e.Value.(eventActivityRet)
+		ev, ok := e.Value.(eventActivityRet)
 		if !ok {
 			return nil, fmt.Errorf("Return event value type mismatch for activity function %s at event log index %d", ea.name, idx)
 		}
-		if er.name != ea.name {
-			return nil, fmt.Errorf("Activity function %s name mismatch of %s at event log index %d", ea.name, er.name, idx)
+		if ev.name != ea.name {
+			return nil, fmt.Errorf("Activity function %s name mismatch of %s at event log index %d", ea.name, ev.name, idx)
 		}
-		ret, err := goToStarlarkValue(er.ret, ss)
+		ret, err := goToStarlarkValue(ev.ret, ss)
 		if err != nil {
 			return nil, fmt.Errorf("Failed deserializing activity function %s return value at event log index %d", ea.name, idx)
 		}
