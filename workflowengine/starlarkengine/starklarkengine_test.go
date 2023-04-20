@@ -116,21 +116,20 @@ def hello_msg(name):
 			TestFnCount: 1,
 			History: []workflowengine.Event{
 				{
-					Key: eventActivityArgsKey{},
-					Value: eventActivityArgs{
-						name:   "customactivity",
-						args:   []any{path.Join(filepath.ToSlash(tempDir), "out.json"), "foo", "world"},
-						kwargs: map[string]any{},
+					Key: activityEventKey{name: "customactivity"},
+					Value: map[string]any{
+						"name":   "customactivity",
+						"args":   []any{path.Join(filepath.ToSlash(tempDir), "out.json"), "foo", "world"},
+						"kwargs": map[string]any{},
 					},
 				},
 				{
-					Key: eventActivityRetKey{},
-					Value: eventActivityRet{
-						name: "customactivity",
-						ret: map[string]any{
-							"b": "foo",
-							"c": "bar",
-						},
+					Key: workflowengine.ActivityReturnEventKey{
+						Key: activityEventKey{name: "customactivity"},
+					},
+					Value: map[string]any{
+						"b": "foo",
+						"c": "bar",
 					},
 				},
 			},

@@ -2,6 +2,7 @@ package workflowengine
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/fs"
@@ -76,6 +77,17 @@ type (
 		Key   any
 		Value any
 	}
+
+	// ActivityReturnEventKey wraps an activity args event key
+	ActivityReturnEventKey struct {
+		Key any
+	}
+
+	Activity interface {
+		Key() any
+		Serialize() (any, error)
+		Exec(ctx context.Context) (any, error)
+	}
 )
 
 // NewEventHistory creates a new [EventHistory]
@@ -109,4 +121,130 @@ func (h *EventHistory) Start() {
 
 func (h *EventHistory) Index() int {
 	return h.idx
+}
+
+func (h *EventHistory) ExecActivity(ctx context.Context, activity Activity) (any, error) {
+	key := activity.Key()
+
+	serial, err := activity.Serialize()
+	if err != nil {
+		return nil, fmt.Errorf("Failed to serialize activity %v args at event history index %d: %w", key, h.idx, err)
+	}
+	if e, ok := h.Next(); ok {
+		if key != e.Key {
+			return nil, fmt.Errorf("Args event key mismatch for activity function at event history index %d: want %v, received %v", h.idx, e.Key, key)
+		}
+		if !deepEqualAny(serial, e.Value) {
+			return nil, fmt.Errorf("Args event value mismatch for activity function %v at event history index %d", key, h.idx)
+		}
+	} else {
+		h.Push(key, serial)
+	}
+
+	retKey := ActivityReturnEventKey{Key: key}
+	if e, ok := h.Next(); ok {
+		if e.Key != retKey {
+			return nil, fmt.Errorf("Return event key mismatch for activity function at event history index %d: want %s, received %s", h.idx, e.Key, retKey)
+		}
+		return e.Value, nil
+	}
+
+	value, err := activity.Exec(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("Error executing activity %v at event log index %d: %w", key, h.idx, err)
+	}
+
+	h.Push(retKey, value)
+
+	return value, nil
+}
+
+func (k ActivityReturnEventKey) String() string {
+	return fmt.Sprintf("return:%v", k.Key)
+}
+
+func equalScalar[T comparable](a T, b any) bool {
+	bx, ok := b.(T)
+	if !ok {
+		return false
+	}
+	return a == bx
+}
+
+func deepEqualAny(a, b any) bool {
+	if a == nil && b == nil {
+		return true
+	}
+	if a == nil || b == nil {
+		return false
+	}
+
+	switch ax := a.(type) {
+	case bool:
+		return equalScalar(ax, b)
+	case int:
+		return equalScalar(ax, b)
+	case int8:
+		return equalScalar(ax, b)
+	case int16:
+		return equalScalar(ax, b)
+	case int32:
+		return equalScalar(ax, b)
+	case int64:
+		return equalScalar(ax, b)
+	case uint:
+		return equalScalar(ax, b)
+	case uint8:
+		return equalScalar(ax, b)
+	case uint16:
+		return equalScalar(ax, b)
+	case uint32:
+		return equalScalar(ax, b)
+	case uint64:
+		return equalScalar(ax, b)
+	case uintptr:
+		return equalScalar(ax, b)
+	case float32:
+		return equalScalar(ax, b)
+	case float64:
+		return equalScalar(ax, b)
+	case json.Number:
+		return equalScalar(ax, b)
+	case string:
+		return equalScalar(ax, b)
+	case map[string]any:
+		{
+			bx, ok := b.(map[string]any)
+			if !ok {
+				return false
+			}
+			if len(ax) != len(bx) {
+				return false
+			}
+			for k, v := range ax {
+				if !deepEqualAny(v, bx[k]) {
+					return false
+				}
+			}
+			return true
+		}
+	case []any:
+		{
+			bx, ok := b.([]any)
+			if !ok {
+				return false
+			}
+			if len(ax) != len(bx) {
+				return false
+			}
+			for n, i := range ax {
+				if !deepEqualAny(i, bx[n]) {
+					return false
+				}
+			}
+			return true
+		}
+	default:
+		return false
+	}
 }

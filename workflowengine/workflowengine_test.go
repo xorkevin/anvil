@@ -12,7 +12,9 @@ import (
 )
 
 type (
-	mockEngine struct{}
+	mockEngine struct {
+		count int
+	}
 )
 
 func (e mockEngine) Exec(ctx context.Context, events *EventHistory, name string, fn string, args map[string]any, w io.Writer) (any, error) {
