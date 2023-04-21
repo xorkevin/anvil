@@ -20,6 +20,7 @@ import (
 	"github.com/mitchellh/mapstructure"
 	"xorkevin.dev/anvil/confengine"
 	"xorkevin.dev/anvil/util/kjson"
+	"xorkevin.dev/anvil/util/ktime"
 	"xorkevin.dev/anvil/workflowengine"
 )
 
@@ -154,10 +155,8 @@ func (l *universeLibBase) sleep(ctx context.Context, args []any) (any, error) {
 	if ms < 1 {
 		return nil, fmt.Errorf("%w: Must sleep for a positive amount of time", workflowengine.ErrInvalidArgs)
 	}
-	select {
-	case <-ctx.Done():
-		return nil, fmt.Errorf("Context cancelled: %w", context.Cause(ctx))
-	case <-time.After(time.Duration(ms) * time.Millisecond):
+	if err := ktime.After(ctx, time.Duration(ms)*time.Millisecond); err != nil {
+		return nil, err
 	}
 	return nil, nil
 }

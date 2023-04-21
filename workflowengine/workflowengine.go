@@ -3,11 +3,15 @@ package workflowengine
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
+	"time"
 
+	"xorkevin.dev/anvil/util/ktime"
 	"xorkevin.dev/kerrors"
+	"xorkevin.dev/klog"
 )
 
 var (
@@ -63,6 +67,52 @@ func (m Map) Build(kind string, fsys fs.FS) (WorkflowEngine, error) {
 		return nil, kerrors.WithMsg(err, "Failed to build workflow engine")
 	}
 	return eng, nil
+}
+
+type (
+	WorkflowOpts struct {
+		Log        klog.Logger
+		Stdout     io.Writer
+		MaxRetries int
+		MinBackoff time.Duration
+		MaxBackoff time.Duration
+	}
+)
+
+func minTime(a, b time.Duration) time.Duration {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func maxTime(a, b time.Duration) time.Duration {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+func ExecWorkflow(ctx context.Context, eng WorkflowEngine, name string, fn string, args map[string]any, opts WorkflowOpts) (any, error) {
+	ctx = klog.CtxWithAttrs(ctx, klog.AString("name", name+"."+fn))
+	l := klog.NewLevelLogger(opts.Log)
+	events := NewEventHistory()
+	backoff := maxTime(opts.MinBackoff, 1)
+	maxBackoff := maxTime(opts.MaxBackoff, 1)
+	for i := 0; i < opts.MaxRetries; i++ {
+		l.Info(ctx, "Running workflow", klog.AInt("attempt", i+1))
+		ret, err := eng.Exec(ctx, events, name, fn, args, opts.Stdout)
+		if err == nil {
+			l.Info(ctx, "Workflow success")
+			return ret, nil
+		}
+		l.Err(ctx, fmt.Errorf("Failed running workflow: %w", err), klog.ADuration("backoff", backoff))
+		if err := ktime.After(ctx, backoff); err != nil {
+			return nil, err
+		}
+		backoff = minTime(backoff*2, maxBackoff)
+	}
+	return nil, errors.New("Exceeded max retries")
 }
 
 type (
