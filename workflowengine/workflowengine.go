@@ -100,6 +100,7 @@ func ExecWorkflow(ctx context.Context, eng WorkflowEngine, name string, fn strin
 	backoff := maxTime(opts.MinBackoff, 1)
 	maxBackoff := maxTime(opts.MaxBackoff, 1)
 	for i := 0; i < opts.MaxRetries; i++ {
+		events.Start()
 		l.Info(ctx, "Running workflow", klog.AInt("attempt", i+1))
 		ret, err := eng.Exec(ctx, events, name, fn, args, opts.Stdout)
 		if err == nil {
