@@ -30,7 +30,7 @@ func (c *Cmd) getComponentCmd() *cobra.Command {
 		DisableAutoGenTag: true,
 	}
 	componentCmd.PersistentFlags().StringVarP(&c.componentFlags.output, "output", "o", "anvil_out", "generated component output directory")
-	componentCmd.PersistentFlags().StringVarP(&c.componentFlags.input, "input", "i", ".", "main component definition")
+	componentCmd.PersistentFlags().StringVarP(&c.componentFlags.input, "input", "i", "", "main component definition")
 	componentCmd.PersistentFlags().StringVarP(&c.componentFlags.cache, "cache", "c", "", "repo cache directory")
 	componentCmd.PersistentFlags().BoolVarP(&c.componentFlags.opts.DryRun, "dry-run", "n", false, "dry run writing components")
 	componentCmd.PersistentFlags().BoolVarP(&c.componentFlags.opts.NoNetwork, "no-network", "m", false, "error if the network is required")

@@ -77,16 +77,16 @@ func (a mockActivity2) Exec(ctx context.Context) (any, error) {
 	return b.String(), nil
 }
 
-func (e *mockEngine) Exec(ctx context.Context, events *EventHistory, name string, fn string, args map[string]any, w io.Writer) (any, error) {
+func (e *mockEngine) Exec(ctx context.Context, events *EventHistory, name string, args map[string]any, w io.Writer) (any, error) {
 	if _, err := events.ExecActivity(ctx, mockActivity1{
 		e:   e,
-		key: name + "." + fn,
+		key: name,
 	}); err != nil {
 		return nil, err
 	}
 	return events.ExecActivity(ctx, mockActivity2{
 		e:    e,
-		key:  name + "." + fn,
+		key:  name,
 		args: args,
 	})
 }
@@ -97,18 +97,16 @@ func TestWorkflowEngine(t *testing.T) {
 	for _, tc := range []struct {
 		Name     string
 		Filename string
-		Main     string
 		Args     map[string]any
 		Expected any
 	}{
 		{
 			Name:     "executes workflow engine",
 			Filename: "foo.mockengine",
-			Main:     "main",
 			Args: map[string]any{
 				"hello": "world",
 			},
-			Expected: "foo.mockengine.main: {\"hello\":\"world\"}",
+			Expected: "foo.mockengine: {\"hello\":\"world\"}",
 		},
 	} {
 		tc := tc
@@ -128,7 +126,7 @@ func TestWorkflowEngine(t *testing.T) {
 			assert.NoError(err)
 			e, ok := eng.(*mockEngine)
 			assert.True(ok)
-			v, err := ExecWorkflow(context.Background(), eng, tc.Filename, tc.Main, tc.Args, WorkflowOpts{
+			v, err := ExecWorkflow(context.Background(), eng, tc.Filename, tc.Args, WorkflowOpts{
 				Log:        klog.Discard{},
 				MaxRetries: 5,
 				MinBackoff: 0,

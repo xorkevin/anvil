@@ -37,7 +37,7 @@ func (e errInvalidArgs) Error() string {
 type (
 	// WorkflowEngine is a workflow engine
 	WorkflowEngine interface {
-		Exec(ctx context.Context, events *EventHistory, name string, fn string, args map[string]any, stdout io.Writer) (any, error)
+		Exec(ctx context.Context, events *EventHistory, name string, args map[string]any, stdout io.Writer) (any, error)
 	}
 
 	// Builder builds a [WorkflowEngine]
@@ -93,8 +93,8 @@ func maxTime(a, b time.Duration) time.Duration {
 	return b
 }
 
-func ExecWorkflow(ctx context.Context, eng WorkflowEngine, name string, fn string, args map[string]any, opts WorkflowOpts) (any, error) {
-	ctx = klog.CtxWithAttrs(ctx, klog.AString("name", name+"."+fn))
+func ExecWorkflow(ctx context.Context, eng WorkflowEngine, name string, args map[string]any, opts WorkflowOpts) (any, error) {
+	ctx = klog.CtxWithAttrs(ctx, klog.AString("name", name))
 	l := klog.NewLevelLogger(opts.Log)
 	events := NewEventHistory(opts.Log)
 	backoff := maxTime(opts.MinBackoff, 1)
@@ -102,7 +102,7 @@ func ExecWorkflow(ctx context.Context, eng WorkflowEngine, name string, fn strin
 	for i := 0; i < opts.MaxRetries; i++ {
 		events.Start()
 		l.Info(ctx, "Running workflow", klog.AInt("attempt", i+1))
-		ret, err := eng.Exec(ctx, events, name, fn, args, opts.Stdout)
+		ret, err := eng.Exec(ctx, events, name, args, opts.Stdout)
 		if err == nil {
 			l.Info(ctx, "Workflow success")
 			return ret, nil

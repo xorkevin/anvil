@@ -21,6 +21,7 @@ type (
 		rootFlags      rootFlags
 		componentFlags componentFlags
 		secretFlags    secretFlags
+		workflowFlags  workflowFlags
 		docFlags       docFlags
 	}
 
@@ -53,6 +54,7 @@ func (c *Cmd) Execute() {
 
 	rootCmd.AddCommand(c.getComponentCmd())
 	rootCmd.AddCommand(c.getSecretCmd())
+	rootCmd.AddCommand(c.getWorkflowCmd())
 	rootCmd.AddCommand(c.getDocCmd())
 
 	if err := rootCmd.Execute(); err != nil {

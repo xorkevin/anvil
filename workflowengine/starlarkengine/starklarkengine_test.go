@@ -43,7 +43,6 @@ func TestEngine(t *testing.T) {
 		Name          string
 		Fsys          fs.FS
 		File          string
-		Main          string
 		Args          map[string]any
 		Expected      any
 		ExpectedFiles map[string]string
@@ -99,7 +98,6 @@ def hello_msg(name):
 				},
 			},
 			File: "main.star",
-			Main: "main",
 			Args: map[string]any{
 				"file": path.Join(filepath.ToSlash(tempDir), "out.json"),
 				"inp":  path.Join(filepath.ToSlash(tempDir), "foo.txt"),
@@ -156,7 +154,7 @@ def hello_msg(name):
 			events := workflowengine.NewEventHistory(klog.Discard{})
 			for i := 0; i < 2; i++ {
 				events.Start()
-				out, err := eng.Exec(context.Background(), events, tc.File, tc.Main, tc.Args, &log)
+				out, err := eng.Exec(context.Background(), events, tc.File, tc.Args, &log)
 				assert.NoError(err)
 				assert.Equal(tc.Expected, out)
 				assert.Equal(tc.Log, log.String())

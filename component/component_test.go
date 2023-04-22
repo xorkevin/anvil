@@ -2,6 +2,7 @@ package component
 
 import (
 	"context"
+	"io"
 	"io/fs"
 	"testing"
 	"testing/fstest"
@@ -140,14 +141,14 @@ local args = anvil.getargs();
 				},
 			)
 
-			components, err := ParseComponents(context.Background(), cache, repofetcher.Spec{Kind: "localdir", RepoSpec: localdir.RepoSpec{}}, tc.ConfigFile)
+			components, err := ParseComponents(context.Background(), cache, repofetcher.Spec{Kind: "localdir", RepoSpec: localdir.RepoSpec{}}, tc.ConfigFile, io.Discard)
 			assert.NoError(err)
 			assert.Len(components, 2)
 
 			outputfs := &kfstest.MapFS{
 				Fsys: fstest.MapFS{},
 			}
-			assert.NoError(WriteComponents(context.Background(), klog.Discard{}, cache, outputfs, components, false))
+			assert.NoError(WriteComponents(context.Background(), klog.Discard{}, cache, outputfs, components, io.Discard, false))
 
 			for k, v := range tc.Files {
 				assert.NotNil(outputfs.Fsys[k])

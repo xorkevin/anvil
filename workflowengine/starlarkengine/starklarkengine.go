@@ -286,7 +286,7 @@ func errLoader(_ *starlark.Thread, module string) (starlark.StringDict, error) {
 	return nil, ErrNoRuntimeLoad
 }
 
-func (e *Engine) Exec(ctx context.Context, events *workflowengine.EventHistory, name string, fn string, args map[string]any, stdout io.Writer) (any, error) {
+func (e *Engine) Exec(ctx context.Context, events *workflowengine.EventHistory, name string, args map[string]any, stdout io.Writer) (any, error) {
 	if args == nil {
 		args = map[string]any{}
 	}
@@ -303,22 +303,22 @@ func (e *Engine) Exec(ctx context.Context, events *workflowengine.EventHistory, 
 	if err != nil {
 		return nil, err
 	}
-	f, ok := vals[fn]
+	f, ok := vals["main"]
 	if !ok {
-		return nil, kerrors.WithMsg(nil, fmt.Sprintf("Global %s not defined for module %s", fn, name))
+		return nil, kerrors.WithMsg(nil, fmt.Sprintf("Global main not defined for module %s", name))
 	}
 	if _, ok := f.(starlark.Callable); !ok {
-		return nil, kerrors.WithMsg(nil, fmt.Sprintf("Global %s in module %s is not callable", fn, name))
+		return nil, kerrors.WithMsg(nil, fmt.Sprintf("Global main in module %s is not callable", name))
 	}
 	thread := &starlark.Thread{
-		Name:  name + "." + fn,
+		Name:  name + ".main",
 		Print: writerPrinter{w: stdout}.print,
 		Load:  errLoader,
 	}
 	thread.SetLocal("ctx", ctx)
 	sv, err := starlark.Call(thread, f, starlark.Tuple{sargs}, nil)
 	if err != nil {
-		return nil, kerrors.WithMsg(err, fmt.Sprintf("Failed executing function %s in module %s", fn, name))
+		return nil, kerrors.WithMsg(err, fmt.Sprintf("Failed executing main function in module %s", name))
 	}
 	v, err := starlarkToGoValue(sv, ss)
 	if err != nil {
