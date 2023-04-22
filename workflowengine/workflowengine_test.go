@@ -129,7 +129,7 @@ func TestWorkflowEngine(t *testing.T) {
 			e, ok := eng.(*mockEngine)
 			assert.True(ok)
 			v, err := ExecWorkflow(context.Background(), eng, tc.Filename, tc.Main, tc.Args, WorkflowOpts{
-				Log:        klog.New(klog.OptHandler(klog.NewJSONSlogHandler(io.Discard))),
+				Log:        klog.Discard{},
 				MaxRetries: 5,
 				MinBackoff: 0,
 				MaxBackoff: 0,

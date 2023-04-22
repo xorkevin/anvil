@@ -3,8 +3,8 @@ module xorkevin.dev/anvil
 go 1.19
 
 require (
-	github.com/google/go-jsonnet v0.19.1
-	github.com/hashicorp/vault/api v1.9.0
+	github.com/google/go-jsonnet v0.20.0
+	github.com/hashicorp/vault/api v1.9.1
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/spf13/cobra v1.7.0
 	github.com/spf13/viper v1.15.0
@@ -13,7 +13,7 @@ require (
 	xorkevin.dev/hunter2 v0.2.7
 	xorkevin.dev/kerrors v0.1.5
 	xorkevin.dev/kfs v0.1.0
-	xorkevin.dev/klog v0.0.0-20230409052311-08b959cc2a77
+	xorkevin.dev/klog v0.0.0-20230422031314-3f827239fa5d
 )
 
 require (
@@ -42,11 +42,11 @@ require (
 	github.com/spf13/jwalterweatherman v1.1.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/subosito/gotenv v1.4.2 // indirect
-	golang.org/x/crypto v0.5.0 // indirect
+	golang.org/x/crypto v0.6.0 // indirect
 	golang.org/x/exp v0.0.0-20230321023759-10a507213a29 // indirect
-	golang.org/x/net v0.5.0 // indirect
-	golang.org/x/sys v0.4.0 // indirect
-	golang.org/x/text v0.6.0 // indirect
+	golang.org/x/net v0.7.0 // indirect
+	golang.org/x/sys v0.5.0 // indirect
+	golang.org/x/text v0.7.0 // indirect
 	golang.org/x/time v0.1.0 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/square/go-jose.v2 v2.5.1 // indirect

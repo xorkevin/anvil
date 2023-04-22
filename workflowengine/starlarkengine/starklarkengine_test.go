@@ -13,6 +13,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"xorkevin.dev/anvil/workflowengine"
+	"xorkevin.dev/klog"
 )
 
 type (
@@ -152,7 +153,7 @@ def hello_msg(name):
 			assert.NoError(err)
 
 			var log strings.Builder
-			events := workflowengine.NewEventHistory()
+			events := workflowengine.NewEventHistory(klog.Discard{})
 			for i := 0; i < 2; i++ {
 				events.Start()
 				out, err := eng.Exec(context.Background(), events, tc.File, tc.Main, tc.Args, &log)

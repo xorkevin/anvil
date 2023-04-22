@@ -96,7 +96,7 @@ func maxTime(a, b time.Duration) time.Duration {
 func ExecWorkflow(ctx context.Context, eng WorkflowEngine, name string, fn string, args map[string]any, opts WorkflowOpts) (any, error) {
 	ctx = klog.CtxWithAttrs(ctx, klog.AString("name", name+"."+fn))
 	l := klog.NewLevelLogger(opts.Log)
-	events := NewEventHistory()
+	events := NewEventHistory(opts.Log)
 	backoff := maxTime(opts.MinBackoff, 1)
 	maxBackoff := maxTime(opts.MaxBackoff, 1)
 	for i := 0; i < opts.MaxRetries; i++ {
@@ -119,6 +119,7 @@ func ExecWorkflow(ctx context.Context, eng WorkflowEngine, name string, fn strin
 type (
 	// EventHistory is an append only log of workflow events
 	EventHistory struct {
+		log     *klog.LevelLogger
 		idx     int
 		history []Event
 	}
@@ -142,8 +143,9 @@ type (
 )
 
 // NewEventHistory creates a new [EventHistory]
-func NewEventHistory() *EventHistory {
+func NewEventHistory(log klog.Logger) *EventHistory {
 	return &EventHistory{
+		log:     klog.NewLevelLogger(log),
 		idx:     0,
 		history: nil,
 	}
@@ -176,6 +178,7 @@ func (h *EventHistory) Index() int {
 
 func (h *EventHistory) ExecActivity(ctx context.Context, activity Activity) (any, error) {
 	key := activity.Key()
+	ctx = klog.CtxWithAttrs(ctx, klog.AString("key", fmt.Sprintf("%v", key)), klog.AInt("index", h.idx))
 
 	serial, err := activity.Serialize()
 	if err != nil {
@@ -197,9 +200,11 @@ func (h *EventHistory) ExecActivity(ctx context.Context, activity Activity) (any
 		if e.Key != retKey {
 			return nil, fmt.Errorf("Return event key mismatch for activity function at event history index %d: want %s, received %s", h.idx, e.Key, retKey)
 		}
+		h.log.Info(ctx, "Skipping rerunning activity")
 		return e.Value, nil
 	}
 
+	h.log.Info(ctx, "Running activity")
 	value, err := activity.Exec(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("Error executing activity %v at event log index %d: %w", key, h.idx, err)

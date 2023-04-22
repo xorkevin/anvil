@@ -2,7 +2,6 @@ package component
 
 import (
 	"context"
-	"io"
 	"io/fs"
 	"testing"
 	"testing/fstest"
@@ -125,8 +124,6 @@ local args = anvil.getargs();
 
 			assert := require.New(t)
 
-			log := klog.New(klog.OptHandler(klog.NewJSONSlogHandler(io.Discard)))
-
 			cache := NewCache(
 				repofetcher.NewCache(
 					repofetcher.Map{
@@ -150,7 +147,7 @@ local args = anvil.getargs();
 			outputfs := &kfstest.MapFS{
 				Fsys: fstest.MapFS{},
 			}
-			assert.NoError(WriteComponents(context.Background(), log, cache, outputfs, components, false))
+			assert.NoError(WriteComponents(context.Background(), klog.Discard{}, cache, outputfs, components, false))
 
 			for k, v := range tc.Files {
 				assert.NotNil(outputfs.Fsys[k])
