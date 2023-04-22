@@ -28,7 +28,8 @@ func (c *Cmd) getWorkflowCmd() *cobra.Command {
 	workflowCmd.PersistentFlags().StringVarP(&c.workflowFlags.input, "input", "i", "", "workflow script")
 	workflowCmd.PersistentFlags().IntVarP(&c.workflowFlags.opts.MaxRetries, "max-retries", "r", 10, "max workflow retries")
 	workflowCmd.PersistentFlags().DurationVarP(&c.workflowFlags.opts.MinBackoff, "min-backoff", "l", time.Second, "min retry backoff")
-	workflowCmd.PersistentFlags().DurationVarP(&c.workflowFlags.opts.MaxBackoff, "max-backoff", "h", 10*time.Second, "max retry backoff")
+	workflowCmd.PersistentFlags().DurationVarP(&c.workflowFlags.opts.MaxBackoff, "max-backoff", "m", 10*time.Second, "max retry backoff")
+	workflowCmd.PersistentFlags().StringVar(&c.workflowFlags.opts.StarlarkLibName, "starlark-stdlib", "anvil:std", "starlark std lib import name")
 
 	return workflowCmd
 }

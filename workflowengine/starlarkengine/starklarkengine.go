@@ -81,6 +81,12 @@ func New(fsys fs.FS, opts ...Opt) *Engine {
 	return eng
 }
 
+func OptLibName(name string) Opt {
+	return func(e *Engine) {
+		e.libname = name
+	}
+}
+
 func OptHttpClientTimeout(t time.Duration) Opt {
 	return func(e *Engine) {
 		e.configHTTPClient.timeout = t

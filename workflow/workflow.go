@@ -22,9 +22,10 @@ const (
 
 type (
 	Opts struct {
-		MaxRetries int
-		MinBackoff time.Duration
-		MaxBackoff time.Duration
+		MaxRetries      int
+		MinBackoff      time.Duration
+		MaxBackoff      time.Duration
+		StarlarkLibName string
 	}
 )
 
@@ -48,6 +49,6 @@ func ExecWorkflow(ctx context.Context, log klog.Logger, algs workflowengine.Map,
 func Exec(ctx context.Context, log klog.Logger, input string, opts Opts) error {
 	local, name := path.Split(input)
 	return ExecWorkflow(ctx, log, workflowengine.Map{
-		wfKindStarlark: starlarkengine.Builder{},
+		wfKindStarlark: starlarkengine.Builder{starlarkengine.OptLibName(opts.StarlarkLibName)},
 	}, os.DirFS(filepath.FromSlash(local)), wfKindStarlark, name, os.Stderr, opts)
 }
