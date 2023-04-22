@@ -20,7 +20,7 @@ anvil component [flags]
       --git-cmd-quiet           quiet git cmd output
       --git-dir string          git repo dir (.git) (default ".git")
   -h, --help                    help for component
-  -i, --input string            main component definition (default ".")
+  -i, --input string            main component definition
       --jsonnet-stdlib string   jsonnet std lib import name (default "anvil:std")
   -m, --no-network              error if the network is required
   -o, --output string           generated component output directory (default "anvil_out")

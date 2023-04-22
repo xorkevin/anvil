@@ -1,0 +1,61 @@
+.nh
+.TH "anvil" "1" "Apr 2023" "" ""
+
+.SH NAME
+.PP
+anvil-workflow - Runs workflows
+
+
+.SH SYNOPSIS
+.PP
+\fBanvil workflow [flags]\fP
+
+
+.SH DESCRIPTION
+.PP
+Runs workflows
+
+
+.SH OPTIONS
+.PP
+\fB-h\fP, \fB--help\fP[=false]
+	help for workflow
+
+.PP
+\fB-i\fP, \fB--input\fP=""
+	workflow script
+
+.PP
+\fB-m\fP, \fB--max-backoff\fP=10s
+	max retry backoff
+
+.PP
+\fB-r\fP, \fB--max-retries\fP=10
+	max workflow retries
+
+.PP
+\fB-l\fP, \fB--min-backoff\fP=1s
+	min retry backoff
+
+.PP
+\fB--starlark-stdlib\fP="anvil:std"
+	starlark std lib import name
+
+
+.SH OPTIONS INHERITED FROM PARENT COMMANDS
+.PP
+\fB--config\fP=""
+	config file (default is $XDG_CONFIG_HOME/anvil/anvil.yaml)
+
+.PP
+\fB--log-json\fP[=false]
+	output json logs
+
+.PP
+\fB--log-level\fP="info"
+	log level
+
+
+.SH SEE ALSO
+.PP
+\fBanvil(1)\fP

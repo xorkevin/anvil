@@ -21,4 +21,5 @@ A compositional template generator
 * [anvil component](anvil_component.md)	 - Prints component configs
 * [anvil doc](anvil_doc.md)	 - generate documentation for anvil
 * [anvil secret](anvil_secret.md)	 - Uploads secret configs
+* [anvil workflow](anvil_workflow.md)	 - Runs workflows
 
