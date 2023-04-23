@@ -12,6 +12,7 @@ import (
 	"github.com/google/go-jsonnet"
 	"github.com/google/go-jsonnet/ast"
 	"github.com/mitchellh/mapstructure"
+	"gopkg.in/yaml.v3"
 	"xorkevin.dev/anvil/confengine"
 	"xorkevin.dev/anvil/util/kjson"
 	"xorkevin.dev/kerrors"
@@ -154,6 +155,20 @@ func (e *Engine) buildVM(args map[string]any, stdout io.Writer) *jsonnet.VM {
 				return kjson.MergePatch(args[0], args[1]), nil
 			},
 			Params: []string{"a", "b"},
+		},
+		{
+			Name: "yamlMarshal",
+			Fn: func(args []any) (any, error) {
+				if len(args) != 1 {
+					return nil, fmt.Errorf("%w: yamlMarshal needs 1 argument", confengine.ErrInvalidArgs)
+				}
+				b, err := yaml.Marshal(args[0])
+				if err != nil {
+					return nil, fmt.Errorf("Failed to marshal yaml: %w", err)
+				}
+				return string(b), nil
+			},
+			Params: []string{"v"},
 		},
 		{
 			Name: "pathJoin",

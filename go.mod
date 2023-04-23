@@ -10,6 +10,7 @@ require (
 	github.com/spf13/viper v1.15.0
 	github.com/stretchr/testify v1.8.2
 	go.starlark.net v0.0.0-20230302034142-4b1e35fe2254
+	gopkg.in/yaml.v3 v3.0.1
 	xorkevin.dev/hunter2 v0.2.7
 	xorkevin.dev/kerrors v0.1.5
 	xorkevin.dev/kfs v0.1.0
@@ -51,6 +52,5 @@ require (
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/square/go-jose.v2 v2.5.1 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 	sigs.k8s.io/yaml v1.1.0 // indirect
 )
