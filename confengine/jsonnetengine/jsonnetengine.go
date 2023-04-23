@@ -2,6 +2,8 @@ package jsonnetengine
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -181,6 +183,21 @@ func (e *Engine) buildVM(args map[string]any, stdout io.Writer) *jsonnet.VM {
 					return nil, fmt.Errorf("%w: Path segments must be an array of strings: %w", confengine.ErrInvalidArgs, err)
 				}
 				return path.Join(segments...), nil
+			},
+			Params: []string{"v"},
+		},
+		{
+			Name: "sha256hex",
+			Fn: func(args []any) (any, error) {
+				if len(args) != 1 {
+					return nil, fmt.Errorf("%w: sha256hex needs 1 argument", confengine.ErrInvalidArgs)
+				}
+				data, ok := args[0].(string)
+				if !ok {
+					return nil, fmt.Errorf("%w: sha256hex must have string argument", confengine.ErrInvalidArgs)
+				}
+				h := sha256.Sum256([]byte(data))
+				return hex.EncodeToString(h[:]), nil
 			},
 			Params: []string{"v"},
 		},
