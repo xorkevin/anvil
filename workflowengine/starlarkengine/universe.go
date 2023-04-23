@@ -4,8 +4,10 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/pem"
 	"fmt"
 	"io/fs"
@@ -18,6 +20,8 @@ import (
 	"time"
 
 	"github.com/mitchellh/mapstructure"
+	"golang.org/x/crypto/bcrypt"
+	"gopkg.in/yaml.v3"
 	"xorkevin.dev/anvil/confengine"
 	"xorkevin.dev/anvil/util/kjson"
 	"xorkevin.dev/anvil/util/ktime"
@@ -61,6 +65,12 @@ func (l universeLibBase) mod() []NativeFunc {
 			Name:   "mergepatch",
 			Fn:     l.jsonMergePatch,
 			Params: []string{"a", "b"},
+		},
+		{
+			Mod:    "yaml",
+			Name:   "marshal",
+			Fn:     l.yamlMarshal,
+			Params: []string{"v"},
 		},
 		{
 			Mod:    "path",
@@ -109,6 +119,18 @@ func (l universeLibBase) mod() []NativeFunc {
 			Name:   "genrsa",
 			Fn:     l.genrsa,
 			Params: []string{"n", "blocktype?"},
+		},
+		{
+			Mod:    "crypto",
+			Name:   "sha256hex",
+			Fn:     l.sha256hex,
+			Params: []string{"data"},
+		},
+		{
+			Mod:    "crypto",
+			Name:   "bcrypt",
+			Fn:     l.bcrypt,
+			Params: []string{"password", "cost"},
 		},
 		{
 			Mod:    "vault",
@@ -198,6 +220,14 @@ func (l *universeLibBase) jsonUnmarshal(ctx context.Context, args []any) (any, e
 
 func (l *universeLibBase) jsonMergePatch(ctx context.Context, args []any) (any, error) {
 	return kjson.MergePatch(args[0], args[1]), nil
+}
+
+func (l *universeLibBase) yamlMarshal(ctx context.Context, args []any) (any, error) {
+	b, err := yaml.Marshal(args[0])
+	if err != nil {
+		return nil, fmt.Errorf("Failed to marshal yaml: %w", err)
+	}
+	return string(b), nil
 }
 
 func (l *universeLibBase) pathJoin(ctx context.Context, args []any) (any, error) {
@@ -311,6 +341,31 @@ func (l *universeLibBase) genrsa(ctx context.Context, args []any) (any, error) {
 		Type:  blocktype,
 		Bytes: rawKey,
 	}), nil
+}
+
+func (l *universeLibBase) sha256hex(ctx context.Context, args []any) (any, error) {
+	data, ok := args[0].(string)
+	if !ok {
+		return nil, fmt.Errorf("%w: Data must be a string", workflowengine.ErrInvalidArgs)
+	}
+	h := sha256.Sum256([]byte(data))
+	return hex.EncodeToString(h[:]), nil
+}
+
+func (l *universeLibBase) bcrypt(ctx context.Context, args []any) (any, error) {
+	password, ok := args[0].(string)
+	if !ok {
+		return nil, fmt.Errorf("%w: Password must be a string", workflowengine.ErrInvalidArgs)
+	}
+	cost, ok := args[0].(int)
+	if !ok {
+		return nil, fmt.Errorf("%w: Cost must be an integer", workflowengine.ErrInvalidArgs)
+	}
+	h, err := bcrypt.GenerateFromPassword([]byte(password), cost)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to hash password: %w", err)
+	}
+	return h, nil
 }
 
 type (
