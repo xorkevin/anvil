@@ -306,6 +306,8 @@ func Generate(ctx context.Context, log klog.Logger, output, input, cachedir stri
 	}
 
 	local, name := path.Split(input)
+	local = path.Clean(local)
+	name = path.Clean(name)
 	gitdir := path.Join(cachedir, "repos", "git")
 
 	cache := NewCache(

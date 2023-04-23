@@ -173,6 +173,24 @@ func (e *Engine) buildVM(args map[string]any, stdout io.Writer) *jsonnet.VM {
 			Params: []string{"v"},
 		},
 		{
+			Name: "yamlUnmarshal",
+			Fn: func(args []any) (any, error) {
+				if len(args) != 1 {
+					return nil, fmt.Errorf("%w: yamlUnmarshal needs 1 argument", confengine.ErrInvalidArgs)
+				}
+				a, ok := args[0].(string)
+				if !ok {
+					return nil, fmt.Errorf("%w: YAML must be a string", confengine.ErrInvalidArgs)
+				}
+				var v any
+				if err := yaml.Unmarshal([]byte(a), &v); err != nil {
+					return nil, fmt.Errorf("Failed to unmarshal yaml: %w", err)
+				}
+				return v, nil
+			},
+			Params: []string{"v"},
+		},
+		{
 			Name: "pathJoin",
 			Fn: func(args []any) (any, error) {
 				if len(args) != 1 {

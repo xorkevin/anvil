@@ -73,6 +73,12 @@ func (l universeLibBase) mod() []NativeFunc {
 			Params: []string{"v"},
 		},
 		{
+			Mod:    "yaml",
+			Name:   "unmarshal",
+			Fn:     l.yamlUnmarshal,
+			Params: []string{"v"},
+		},
+		{
 			Mod:    "path",
 			Name:   "join",
 			Fn:     l.pathJoin,
@@ -186,7 +192,7 @@ func (l *universeLibBase) sleep(ctx context.Context, args []any) (any, error) {
 func (l *universeLibBase) getenv(ctx context.Context, args []any) (any, error) {
 	name, ok := args[0].(string)
 	if !ok {
-		return nil, fmt.Errorf("%w: Env name must be string", workflowengine.ErrInvalidArgs)
+		return nil, fmt.Errorf("%w: Env name must be a string", workflowengine.ErrInvalidArgs)
 	}
 	v, ok := os.LookupEnv(name)
 	if !ok {
@@ -206,7 +212,7 @@ func (l *universeLibBase) jsonMarshal(ctx context.Context, args []any) (any, err
 func (l *universeLibBase) jsonUnmarshal(ctx context.Context, args []any) (any, error) {
 	s, ok := args[0].(string)
 	if !ok {
-		return nil, fmt.Errorf("%w: JSON must be string", workflowengine.ErrInvalidArgs)
+		return nil, fmt.Errorf("%w: JSON must be a string", workflowengine.ErrInvalidArgs)
 	}
 	if s == "" {
 		return nil, fmt.Errorf("%w: Empty json string", workflowengine.ErrInvalidArgs)
@@ -228,6 +234,18 @@ func (l *universeLibBase) yamlMarshal(ctx context.Context, args []any) (any, err
 		return nil, fmt.Errorf("Failed to marshal yaml: %w", err)
 	}
 	return string(b), nil
+}
+
+func (l *universeLibBase) yamlUnmarshal(ctx context.Context, args []any) (any, error) {
+	b, ok := args[0].(string)
+	if !ok {
+		return nil, fmt.Errorf("%w: YAML must be a string", workflowengine.ErrInvalidArgs)
+	}
+	var v any
+	if err := yaml.Unmarshal([]byte(b), &v); err != nil {
+		return nil, fmt.Errorf("Failed to unmarshal yaml: %w", err)
+	}
+	return v, nil
 }
 
 func (l *universeLibBase) pathJoin(ctx context.Context, args []any) (any, error) {
