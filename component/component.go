@@ -1,6 +1,7 @@
 package component
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -274,7 +275,11 @@ func writeRepoChecksumFile(name string, repos []repofetcher.RepoChecksum) error 
 	if err != nil {
 		return kerrors.WithMsg(err, "Failed to construct repo checksum data")
 	}
-	if err := os.WriteFile(filepath.FromSlash(name), b, 0o644); err != nil {
+	var f bytes.Buffer
+	if err := json.Indent(&f, b, "", "  "); err != nil {
+		return kerrors.WithMsg(err, "Failed to indent repo checksum file")
+	}
+	if err := os.WriteFile(filepath.FromSlash(name), f.Bytes(), 0o644); err != nil {
 		return kerrors.WithMsg(err, fmt.Sprintf("Failed to write repo checksum file: %s", name))
 	}
 	return nil
