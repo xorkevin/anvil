@@ -108,6 +108,9 @@ func ExecWorkflow(ctx context.Context, eng WorkflowEngine, name string, args map
 			return ret, nil
 		}
 		l.Err(ctx, fmt.Errorf("Failed running workflow: %w", err), klog.ADuration("backoff", backoff))
+		if i+1 >= opts.MaxRetries {
+			break
+		}
 		if err := ktime.After(ctx, backoff); err != nil {
 			return nil, err
 		}

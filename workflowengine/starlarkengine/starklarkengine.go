@@ -334,6 +334,10 @@ func (e *Engine) Exec(ctx context.Context, events *workflowengine.EventHistory, 
 }
 
 func starlarkToGoValue(x starlark.Value, ss *stackset.Any) (_ any, retErr error) {
+	if x == nil {
+		return nil, nil
+	}
+
 	switch x.(type) {
 	case *starlark.Dict, *starlark.List:
 		if !ss.Push(x) {
@@ -404,7 +408,7 @@ func starlarkToGoValue(x starlark.Value, ss *stackset.Any) (_ any, retErr error)
 		}
 
 	default:
-		return nil, errors.New("Unknown starlark type")
+		return nil, fmt.Errorf("Unknown starlark type: %T", x)
 	}
 }
 
@@ -412,6 +416,7 @@ func goToStarlarkValue(x any, ss *stackset.Any) (_ starlark.Value, retErr error)
 	if x == nil {
 		return starlark.None, nil
 	}
+
 	switch x.(type) {
 	case map[string]any, []any:
 		ptr := reflect.ValueOf(x).UnsafePointer()
@@ -426,6 +431,7 @@ func goToStarlarkValue(x any, ss *stackset.Any) (_ starlark.Value, retErr error)
 			}
 		}()
 	}
+
 	switch x := x.(type) {
 	case bool:
 		return starlark.Bool(x), nil
@@ -499,6 +505,6 @@ func goToStarlarkValue(x any, ss *stackset.Any) (_ starlark.Value, retErr error)
 			return starlark.NewList(l), nil
 		}
 	default:
-		return nil, errors.New("Unsupported go type")
+		return nil, fmt.Errorf("Unsupported go type: %T", x)
 	}
 }

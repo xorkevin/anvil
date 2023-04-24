@@ -375,7 +375,7 @@ func (l *universeLibBase) bcrypt(ctx context.Context, args []any) (any, error) {
 	if !ok {
 		return nil, fmt.Errorf("%w: Password must be a string", workflowengine.ErrInvalidArgs)
 	}
-	cost, ok := args[0].(int)
+	cost, ok := args[1].(int)
 	if !ok {
 		return nil, fmt.Errorf("%w: Cost must be an integer", workflowengine.ErrInvalidArgs)
 	}
@@ -383,7 +383,7 @@ func (l *universeLibBase) bcrypt(ctx context.Context, args []any) (any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("Failed to hash password: %w", err)
 	}
-	return h, nil
+	return string(h), nil
 }
 
 type (
