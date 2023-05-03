@@ -68,8 +68,8 @@ func newHTTPClient(c configHTTPClient) *httpClient {
 	}
 }
 
-func (c *httpClient) Req(method, path string, body io.Reader) (*http.Request, error) {
-	req, err := http.NewRequest(method, path, body)
+func (c *httpClient) Req(method, url string, body io.Reader) (*http.Request, error) {
+	req, err := http.NewRequest(method, url, body)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrInvalidClientReq, err)
 	}
@@ -77,7 +77,7 @@ func (c *httpClient) Req(method, path string, body io.Reader) (*http.Request, er
 }
 
 func (c *httpClient) Do(ctx context.Context, r *http.Request) (_ *http.Response, retErr error) {
-	res, err := c.httpc.Do(r)
+	res, err := c.httpc.Do(r.WithContext(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrSendClientReq, err)
 	}
@@ -102,13 +102,36 @@ func (c *httpClient) Do(ctx context.Context, r *http.Request) (_ *http.Response,
 	return res, nil
 }
 
-func (c *httpClient) ReqJSON(method, path string, data interface{}) (*http.Request, error) {
+func (c *httpClient) DoStr(ctx context.Context, r *http.Request) (_ *http.Response, _ string, retErr error) {
+	res, err := c.Do(ctx, r)
+	if err != nil {
+		return res, "", err
+	}
+	defer func() {
+		if err := res.Body.Close(); err != nil {
+			retErr = errors.Join(retErr, fmt.Errorf("Failed to close http response body: %w", err))
+		}
+	}()
+	defer func() {
+		if _, err := io.Copy(io.Discard, res.Body); err != nil {
+			retErr = errors.Join(retErr, fmt.Errorf("Failed to discard http response body: %w", err))
+		}
+	}()
+
+	var response strings.Builder
+	if _, err := io.Copy(&response, res.Body); err != nil {
+		return res, "", fmt.Errorf("Failed reading http response: %w", err)
+	}
+	return res, response.String(), nil
+}
+
+func (c *httpClient) ReqJSON(method, url string, data interface{}) (*http.Request, error) {
 	b, err := kjson.Marshal(data)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to encode body to json: %w", err)
 	}
 	body := bytes.NewReader(b)
-	req, err := c.Req(method, path, body)
+	req, err := c.Req(method, url, body)
 	if err != nil {
 		return nil, err
 	}

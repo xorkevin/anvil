@@ -9,7 +9,9 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/pem"
+	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"net/http"
 	"os"
@@ -107,6 +109,12 @@ func (l universeLibBase) mod() []NativeFunc {
 			Name:   "writefile",
 			Fn:     l.writefile,
 			Params: []string{"name", "data"},
+		},
+		{
+			Mod:    "http",
+			Name:   "doreq",
+			Fn:     l.httpDoReq,
+			Params: []string{"method", "url", "opts", "body"},
 		},
 		{
 			Mod:    "template",
@@ -293,6 +301,92 @@ func (l *universeLibBase) writefile(ctx context.Context, args []any) (any, error
 		return nil, fmt.Errorf("Failed writing file %s: %w", name, err)
 	}
 	return nil, nil
+}
+
+type (
+	httpReqOpts struct {
+		BasicAuth struct {
+			Username string `json:"username"`
+			Password string `json:"password"`
+		} `json:"basicauth"`
+		Header  map[string]any `json:"header"`
+		JSONReq bool           `json:"jsonreq"`
+		JSONRes bool           `json:"jsonres"`
+	}
+)
+
+func (l *universeLibBase) httpDoReq(ctx context.Context, args []any) (_ any, retErr error) {
+	method, ok := args[0].(string)
+	if !ok {
+		return nil, fmt.Errorf("%w: Method must be a string", workflowengine.ErrInvalidArgs)
+	}
+	url, ok := args[1].(string)
+	if !ok {
+		return nil, fmt.Errorf("%w: URL must be a string", workflowengine.ErrInvalidArgs)
+	}
+	var opts httpReqOpts
+	if err := mapstructure.Decode(args[2], &opts); err != nil {
+		return nil, fmt.Errorf("%w: Invalid http req opts: %w", confengine.ErrInvalidArgs, err)
+	}
+	var req *http.Request
+	if opts.JSONReq {
+		var err error
+		req, err = l.httpClient.ReqJSON(method, url, args[3])
+		if err != nil {
+			return nil, fmt.Errorf("%w: Failed to construct http json request: %w", confengine.ErrInvalidArgs, err)
+		}
+	} else {
+		body, ok := args[3].(string)
+		if !ok {
+			return nil, fmt.Errorf("%w: Body must be a string", workflowengine.ErrInvalidArgs)
+		}
+		var err error
+		req, err = l.httpClient.Req(method, url, strings.NewReader(body))
+		if err != nil {
+			return nil, fmt.Errorf("%w: Failed to construct http request: %w", confengine.ErrInvalidArgs, err)
+		}
+	}
+	for k, v := range opts.Header {
+		val, ok := v.(string)
+		if !ok {
+			return nil, fmt.Errorf("%w: Header value must be a string", confengine.ErrInvalidArgs)
+		}
+		req.Header.Set(k, val)
+	}
+	if opts.BasicAuth.Username != "" {
+		req.SetBasicAuth(opts.BasicAuth.Username, opts.BasicAuth.Password)
+	}
+	if opts.JSONRes {
+		retRes := map[string]any{}
+		var resbody any
+		res, decoded, err := l.httpClient.DoJSON(ctx, req, &resbody)
+		if err != nil {
+			if res != nil {
+				retRes["status"] = res.StatusCode
+			}
+			retRes["error"] = fmt.Errorf("Failed making http request: %w", err).Error()
+			return retRes, nil
+		}
+		retRes["status"] = res.StatusCode
+		if !decoded {
+			retRes["error"] = "No http response body"
+			return retRes, nil
+		}
+		retRes["data"] = resbody
+		return retRes, nil
+	}
+	retRes := map[string]any{}
+	res, resbody, err := l.httpClient.DoStr(ctx, req)
+	if err != nil {
+		if res != nil {
+			retRes["status"] = res.StatusCode
+		}
+		retRes["error"] = fmt.Errorf("Failed making http request: %w", err).Error()
+		return retRes, nil
+	}
+	retRes["status"] = res.StatusCode
+	retRes["data"] = resbody
+	return retRes, nil
 }
 
 func (l *universeLibBase) gotpl(ctx context.Context, args []any) (any, error) {
