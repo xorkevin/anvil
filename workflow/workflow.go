@@ -29,14 +29,14 @@ type (
 	}
 )
 
-func ExecWorkflow(ctx context.Context, log klog.Logger, algs workflowengine.Map, fsys fs.FS, kind string, name string, stdout io.Writer, opts Opts) error {
+func ExecWorkflow(ctx context.Context, log klog.Logger, algs workflowengine.Map, fsys fs.FS, kind string, name string, stderr io.Writer, opts Opts) error {
 	eng, err := algs.Build(kind, fsys)
 	if err != nil {
 		return kerrors.WithMsg(err, fmt.Sprintf("Failed to build %s workflow engine", kind))
 	}
 	if _, err := workflowengine.ExecWorkflow(ctx, eng, name, nil, workflowengine.WorkflowOpts{
 		Log:        log,
-		Stdout:     stdout,
+		Stderr:     stderr,
 		MaxRetries: opts.MaxRetries,
 		MinBackoff: opts.MinBackoff,
 		MaxBackoff: opts.MaxBackoff,

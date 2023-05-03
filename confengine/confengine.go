@@ -32,7 +32,7 @@ func (e errInvalidArgs) Error() string {
 type (
 	// ConfEngine is a config engine
 	ConfEngine interface {
-		Exec(ctx context.Context, name string, args map[string]any, stdout io.Writer) (io.ReadCloser, error)
+		Exec(ctx context.Context, name string, args map[string]any, stderr io.Writer) (io.ReadCloser, error)
 	}
 
 	// Builder builds a [ConfEngine]

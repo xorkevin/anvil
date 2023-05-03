@@ -15,6 +15,7 @@ import (
 	"io/fs"
 	"net/http"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
 	"strings"
@@ -33,6 +34,7 @@ import (
 type (
 	universeLibBase struct {
 		root       fs.FS
+		stderr     io.Writer
 		args       map[string]any
 		httpClient *httpClient
 	}
@@ -109,6 +111,12 @@ func (l universeLibBase) mod() []NativeFunc {
 			Name:   "writefile",
 			Fn:     l.writefile,
 			Params: []string{"name", "data"},
+		},
+		{
+			Mod:    "os",
+			Name:   "exec",
+			Fn:     l.exec,
+			Params: []string{"cmd", "args", "opts"},
 		},
 		{
 			Mod:    "http",
@@ -197,18 +205,6 @@ func (l *universeLibBase) sleep(ctx context.Context, args []any) (any, error) {
 	return nil, nil
 }
 
-func (l *universeLibBase) getenv(ctx context.Context, args []any) (any, error) {
-	name, ok := args[0].(string)
-	if !ok {
-		return nil, fmt.Errorf("%w: Env name must be a string", workflowengine.ErrInvalidArgs)
-	}
-	v, ok := os.LookupEnv(name)
-	if !ok {
-		return nil, nil
-	}
-	return v, nil
-}
-
 func (l *universeLibBase) jsonMarshal(ctx context.Context, args []any) (any, error) {
 	b, err := kjson.Marshal(args[0])
 	if err != nil {
@@ -264,6 +260,18 @@ func (l *universeLibBase) pathJoin(ctx context.Context, args []any) (any, error)
 	return path.Join(segments...), nil
 }
 
+func (l *universeLibBase) getenv(ctx context.Context, args []any) (any, error) {
+	name, ok := args[0].(string)
+	if !ok {
+		return nil, fmt.Errorf("%w: Env name must be a string", workflowengine.ErrInvalidArgs)
+	}
+	v, ok := os.LookupEnv(name)
+	if !ok {
+		return nil, nil
+	}
+	return v, nil
+}
+
 func (l *universeLibBase) readfile(ctx context.Context, args []any) (any, error) {
 	name, ok := args[0].(string)
 	if !ok {
@@ -304,14 +312,65 @@ func (l *universeLibBase) writefile(ctx context.Context, args []any) (any, error
 }
 
 type (
+	osExecOpts struct {
+		StdoutValue bool     `mapstructure:"stdoutvalue"`
+		StdoutFile  string   `mapstructure:"stdoutfile"`
+		Dir         string   `mapstructure:"dir"`
+		Env         []string `mapstructure:"env"`
+	}
+)
+
+func (l *universeLibBase) exec(ctx context.Context, args []any) (_ any, retErr error) {
+	cmdname, ok := args[0].(string)
+	if !ok {
+		return nil, fmt.Errorf("%w: Cmd name must be a string", workflowengine.ErrInvalidArgs)
+	}
+	var cmdargs []string
+	if err := mapstructure.Decode(args[1], &cmdargs); err != nil {
+		return nil, fmt.Errorf("%w: Cmd args must be an array of strings: %w", confengine.ErrInvalidArgs, err)
+	}
+	var opts osExecOpts
+	if err := mapstructure.Decode(args[2], &opts); err != nil {
+		return nil, fmt.Errorf("%w: Invalid cmd opts: %w", confengine.ErrInvalidArgs, err)
+	}
+	cmd := exec.CommandContext(ctx, cmdname, cmdargs...)
+	cmd.Dir = opts.Dir
+	cmd.Env = opts.Env
+	cmd.Stdout = l.stderr
+	cmd.Stderr = l.stderr
+	var out strings.Builder
+	if opts.StdoutValue {
+		cmd.Stdout = &out
+	} else if opts.StdoutFile != "" {
+		f, err := os.Create(filepath.FromSlash(opts.StdoutFile))
+		if err != nil {
+			return nil, fmt.Errorf("Failed to open file %s: %w", opts.StdoutFile, err)
+		}
+		defer func() {
+			if err := f.Close(); err != nil {
+				retErr = errors.Join(retErr, fmt.Errorf("Failed to close file %s: %w", opts.StdoutFile, err))
+			}
+		}()
+		cmd.Stdout = f
+	}
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("Failed running command %s %s: %w", cmdname, strings.Join(cmdargs, " "), err)
+	}
+	if opts.StdoutValue {
+		return cmd.String(), nil
+	}
+	return nil, nil
+}
+
+type (
 	httpReqOpts struct {
 		BasicAuth struct {
-			Username string `json:"username"`
-			Password string `json:"password"`
-		} `json:"basicauth"`
-		Header  map[string]any `json:"header"`
-		JSONReq bool           `json:"jsonreq"`
-		JSONRes bool           `json:"jsonres"`
+			Username string `mapstructure:"username"`
+			Password string `mapstructure:"password"`
+		} `mapstructure:"basicauth"`
+		Header  map[string]any `mapstructure:"header"`
+		JSONReq bool           `mapstructure:"jsonreq"`
+		JSONRes bool           `mapstructure:"jsonres"`
 	}
 )
 

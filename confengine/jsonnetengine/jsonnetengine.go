@@ -93,16 +93,16 @@ func (a confArgs) getargs(args []any) (any, error) {
 	return a.args, nil
 }
 
-func (e *Engine) buildVM(args map[string]any, stdout io.Writer) *jsonnet.VM {
+func (e *Engine) buildVM(args map[string]any, stderr io.Writer) *jsonnet.VM {
 	if args == nil {
 		args = map[string]any{}
 	}
-	if stdout == nil {
-		stdout = io.Discard
+	if stderr == nil {
+		stderr = io.Discard
 	}
 
 	vm := jsonnet.MakeVM()
-	vm.SetTraceOut(stdout)
+	vm.SetTraceOut(stderr)
 	vm.StringOutput = e.strout
 
 	var stdlib strings.Builder
@@ -249,8 +249,8 @@ func (e *Engine) buildVM(args map[string]any, stdout io.Writer) *jsonnet.VM {
 }
 
 // Exec implements [confengine.ConfEngine] and generates config using jsonnet
-func (e *Engine) Exec(ctx context.Context, name string, args map[string]any, stdout io.Writer) (io.ReadCloser, error) {
-	vm := e.buildVM(args, stdout)
+func (e *Engine) Exec(ctx context.Context, name string, args map[string]any, stderr io.Writer) (io.ReadCloser, error) {
+	vm := e.buildVM(args, stderr)
 	b, err := vm.EvaluateFile(name)
 	if err != nil {
 		return nil, kerrors.WithMsg(err, "Failed to execute jsonnet")

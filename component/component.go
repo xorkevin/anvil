@@ -75,12 +75,12 @@ type (
 	}
 )
 
-func parseConfigFile(ctx context.Context, cache *Cache, spec repofetcher.Spec, dir string, name string, args map[string]any, stdout io.Writer) (_ *configData, retErr error) {
+func parseConfigFile(ctx context.Context, cache *Cache, spec repofetcher.Spec, dir string, name string, args map[string]any, stderr io.Writer) (_ *configData, retErr error) {
 	eng, err := cache.Get(ctx, configKindJsonnet, spec, dir)
 	if err != nil {
 		return nil, err
 	}
-	out, err := eng.Exec(ctx, name, args, stdout)
+	out, err := eng.Exec(ctx, name, args, stderr)
 	if err != nil {
 		return nil, kerrors.WithMsg(err, fmt.Sprintf("Failed executing component config %s %s/%s", spec, dir, name))
 	}
@@ -97,7 +97,7 @@ func parseConfigFile(ctx context.Context, cache *Cache, spec repofetcher.Spec, d
 	return config, nil
 }
 
-func parseSubcomponent(ctx context.Context, cache *Cache, ss *stackset.StackSet[string], spec repofetcher.Spec, dir string, data componentData, stdout io.Writer) ([]Component, error) {
+func parseSubcomponent(ctx context.Context, cache *Cache, ss *stackset.StackSet[string], spec repofetcher.Spec, dir string, data componentData, stderr io.Writer) ([]Component, error) {
 	var compspec repofetcher.Spec
 	var compname string
 	if data.Kind == repoKindLocalDir {
@@ -119,7 +119,7 @@ func parseSubcomponent(ctx context.Context, cache *Cache, ss *stackset.StackSet[
 		}
 		compname = data.Path
 	}
-	c, err := parseComponentsRec(ctx, cache, ss, compspec, compname, data.Args, stdout)
+	c, err := parseComponentsRec(ctx, cache, ss, compspec, compname, data.Args, stderr)
 	if err != nil {
 		return nil, kerrors.WithMsg(err, fmt.Sprintf("Failed parsing subcomponent %s %s", compspec, compname))
 	}
@@ -134,12 +134,12 @@ func componentKey(spec repofetcher.Spec, dir string, name string) string {
 	return s.String()
 }
 
-func parseComponentsRec(ctx context.Context, cache *Cache, ss *stackset.StackSet[string], spec repofetcher.Spec, name string, args map[string]any, stdout io.Writer) (_ []Component, retErr error) {
+func parseComponentsRec(ctx context.Context, cache *Cache, ss *stackset.StackSet[string], spec repofetcher.Spec, name string, args map[string]any, stderr io.Writer) (_ []Component, retErr error) {
 	dir, name := path.Split(name)
 	dir = path.Clean(dir)
 	name = path.Clean(name)
 
-	config, err := parseConfigFile(ctx, cache, spec, dir, name, args, stdout)
+	config, err := parseConfigFile(ctx, cache, spec, dir, name, args, stderr)
 	if err != nil {
 		return nil, err
 	}
@@ -159,7 +159,7 @@ func parseComponentsRec(ctx context.Context, cache *Cache, ss *stackset.StackSet
 
 	var components []Component
 	for _, i := range config.Components {
-		c, err := parseSubcomponent(ctx, cache, ss, spec, dir, i, stdout)
+		c, err := parseSubcomponent(ctx, cache, ss, spec, dir, i, stderr)
 		if err != nil {
 			return nil, kerrors.WithMsg(err, fmt.Sprintf("Failed parsing subcomponent of %s %s/%s", spec, dir, name))
 		}
@@ -175,11 +175,11 @@ func parseComponentsRec(ctx context.Context, cache *Cache, ss *stackset.StackSet
 }
 
 // ParseComponents parses component configs to [Component]
-func ParseComponents(ctx context.Context, cache *Cache, spec repofetcher.Spec, name string, stdout io.Writer) ([]Component, error) {
-	return parseComponentsRec(ctx, cache, stackset.New[string](), spec, name, nil, stdout)
+func ParseComponents(ctx context.Context, cache *Cache, spec repofetcher.Spec, name string, stderr io.Writer) ([]Component, error) {
+	return parseComponentsRec(ctx, cache, stackset.New[string](), spec, name, nil, stderr)
 }
 
-func writeComponent(ctx context.Context, log *klog.LevelLogger, cache *Cache, fsys fs.FS, component Component, stdout io.Writer, dryrun bool) error {
+func writeComponent(ctx context.Context, log *klog.LevelLogger, cache *Cache, fsys fs.FS, component Component, stderr io.Writer, dryrun bool) error {
 	ctx = klog.CtxWithAttrs(ctx, klog.AString("repo", component.Spec.String()), klog.AString("dir", component.Dir))
 	log.Info(ctx, "Writing component")
 	for _, i := range component.Templates {
@@ -188,7 +188,7 @@ func writeComponent(ctx context.Context, log *klog.LevelLogger, cache *Cache, fs
 			return err
 		}
 		if err := func() (retErr error) {
-			out, err := eng.Exec(ctx, i.Path, i.Args, stdout)
+			out, err := eng.Exec(ctx, i.Path, i.Args, stderr)
 			if err != nil {
 				return kerrors.WithMsg(err, fmt.Sprintf("Failed executing component template %s %s/%s", component.Spec, component.Dir, i.Path))
 			}
@@ -223,10 +223,10 @@ func writeComponent(ctx context.Context, log *klog.LevelLogger, cache *Cache, fs
 }
 
 // WriteComponents writes components to an fs
-func WriteComponents(ctx context.Context, log klog.Logger, cache *Cache, fsys fs.FS, components []Component, stdout io.Writer, dryrun bool) error {
+func WriteComponents(ctx context.Context, log klog.Logger, cache *Cache, fsys fs.FS, components []Component, stderr io.Writer, dryrun bool) error {
 	l := klog.NewLevelLogger(log)
 	for _, i := range components {
-		if err := writeComponent(ctx, l, cache, fsys, i, stdout, dryrun); err != nil {
+		if err := writeComponent(ctx, l, cache, fsys, i, stderr, dryrun); err != nil {
 			return err
 		}
 	}

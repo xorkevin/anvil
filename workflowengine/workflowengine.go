@@ -37,7 +37,7 @@ func (e errInvalidArgs) Error() string {
 type (
 	// WorkflowEngine is a workflow engine
 	WorkflowEngine interface {
-		Exec(ctx context.Context, events *EventHistory, name string, args map[string]any, stdout io.Writer) (any, error)
+		Exec(ctx context.Context, events *EventHistory, name string, args map[string]any, stderr io.Writer) (any, error)
 	}
 
 	// Builder builds a [WorkflowEngine]
@@ -72,7 +72,7 @@ func (m Map) Build(kind string, fsys fs.FS) (WorkflowEngine, error) {
 type (
 	WorkflowOpts struct {
 		Log        klog.Logger
-		Stdout     io.Writer
+		Stderr     io.Writer
 		MaxRetries int
 		MinBackoff time.Duration
 		MaxBackoff time.Duration
@@ -102,7 +102,7 @@ func ExecWorkflow(ctx context.Context, eng WorkflowEngine, name string, args map
 	for i := 0; i < opts.MaxRetries; i++ {
 		events.Start()
 		l.Info(ctx, "Running workflow", klog.AInt("attempt", i+1))
-		ret, err := eng.Exec(ctx, events, name, args, opts.Stdout)
+		ret, err := eng.Exec(ctx, events, name, args, opts.Stderr)
 		if err == nil {
 			l.Info(ctx, "Workflow success")
 			return ret, nil

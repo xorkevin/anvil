@@ -51,7 +51,7 @@ type (
 		root     fs.FS
 		modCache map[string]*loadedModule
 		set      *stackset.StackSet[string]
-		stdout   io.Writer
+		stderr   io.Writer
 		universe map[string]starlark.StringDict
 		globals  starlark.StringDict
 	}
@@ -150,7 +150,7 @@ func (f NativeFunc) call(t *starlark.Thread, _ *starlark.Builtin, args starlark.
 	return sret, nil
 }
 
-func (e *Engine) createModLoader(events *workflowengine.EventHistory, args map[string]any, stdout io.Writer) *modLoader {
+func (e *Engine) createModLoader(events *workflowengine.EventHistory, args map[string]any, stderr io.Writer) *modLoader {
 	baseMod := starlark.StringDict{}
 	subMods := map[string]starlark.StringDict{
 		"workflow": universeLibWF{
@@ -159,6 +159,7 @@ func (e *Engine) createModLoader(events *workflowengine.EventHistory, args map[s
 	}
 	for _, v := range append(universeLibBase{
 		root:       e.fsys,
+		stderr:     stderr,
 		httpClient: newHTTPClient(e.configHTTPClient),
 		args:       args,
 	}.mod(), e.nativeFuncs...) {
@@ -178,7 +179,7 @@ func (e *Engine) createModLoader(events *workflowengine.EventHistory, args map[s
 		root:     e.fsys,
 		modCache: map[string]*loadedModule{},
 		set:      stackset.New[string](),
-		stdout:   stdout,
+		stderr:   stderr,
 		universe: map[string]starlark.StringDict{
 			e.libname + ":json": starjson.Module.Members,
 			e.libname + ":math": starmath.Module.Members,
@@ -229,7 +230,7 @@ func (l *modLoader) loadFile(ctx context.Context, module string) (starlark.Strin
 		} else {
 			thread := &starlark.Thread{
 				Name:  module,
-				Print: writerPrinter{w: l.stdout}.print,
+				Print: writerPrinter{w: l.stderr}.print,
 				Load:  fromLoader{ctx: ctx, l: l, from: module}.load,
 			}
 			thread.SetLocal("ctx", ctx)
@@ -292,19 +293,19 @@ func errLoader(_ *starlark.Thread, module string) (starlark.StringDict, error) {
 	return nil, ErrNoRuntimeLoad
 }
 
-func (e *Engine) Exec(ctx context.Context, events *workflowengine.EventHistory, name string, args map[string]any, stdout io.Writer) (any, error) {
+func (e *Engine) Exec(ctx context.Context, events *workflowengine.EventHistory, name string, args map[string]any, stderr io.Writer) (any, error) {
 	if args == nil {
 		args = map[string]any{}
 	}
-	if stdout == nil {
-		stdout = io.Discard
+	if stderr == nil {
+		stderr = io.Discard
 	}
 	ss := stackset.NewAny()
 	sargs, err := goToStarlarkValue(args, ss)
 	if err != nil {
 		return nil, kerrors.WithMsg(err, "Failed converting go value args to starlark values")
 	}
-	ml := e.createModLoader(events, args, stdout)
+	ml := e.createModLoader(events, args, stderr)
 	vals, err := ml.load(ctx, "", name)
 	if err != nil {
 		return nil, err
@@ -318,7 +319,7 @@ func (e *Engine) Exec(ctx context.Context, events *workflowengine.EventHistory, 
 	}
 	thread := &starlark.Thread{
 		Name:  name + ".main",
-		Print: writerPrinter{w: stdout}.print,
+		Print: writerPrinter{w: stderr}.print,
 		Load:  errLoader,
 	}
 	thread.SetLocal("ctx", ctx)
