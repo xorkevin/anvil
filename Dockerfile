@@ -3,12 +3,12 @@ WORKDIR /usr/local/src/go/anvil
 COPY --link go.mod /usr/local/src/go/anvil/go.mod
 COPY --link go.sum /usr/local/src/go/anvil/go.sum
 RUN \
-  --mount=type=cache,id=modcache,sharing=locked,target=/root/go/pkg/mod \
+  --mount=type=cache,id=gomodcache,sharing=locked,target=/root/go/pkg/mod \
   go mod download -json && go mod verify
 COPY --link . /usr/local/src/go/anvil
 RUN \
-  --mount=type=cache,id=modcache,sharing=locked,target=/root/go/pkg/mod \
-  --mount=type=cache,id=buildcache,sharing=locked,target=/root/.cache/go-build \
+  --mount=type=cache,id=gomodcache,sharing=locked,target=/root/go/pkg/mod \
+  --mount=type=cache,id=gobuildcache,sharing=locked,target=/root/.cache/go-build \
   GOPROXY=off go build -v -trimpath -ldflags "-w -s" -o /usr/local/bin/anvil .
 
 FROM cgr.dev/chainguard/bash:latest
