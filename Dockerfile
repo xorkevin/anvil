@@ -12,7 +12,7 @@ RUN \
   GOPROXY=off go build -v -trimpath -ldflags "-w -s" -o /usr/local/bin/anvil .
 
 FROM cgr.dev/chainguard/bash:latest
-LABEL org.opencontainers.image.authors="xorkevin <kevin@xorkevin.com>"
+LABEL org.opencontainers.image.authors="Kevin Wang <kevin@xorkevin.com>"
 COPY --link --from=builder /usr/local/bin/anvil /usr/local/bin/anvil
 WORKDIR /home/anvil
 ENTRYPOINT ["/usr/local/bin/anvil"]
