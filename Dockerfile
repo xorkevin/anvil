@@ -1,19 +1,25 @@
-FROM cgr.dev/chainguard/go:latest as builder
-WORKDIR /usr/local/src/go/anvil
-COPY --link go.mod /usr/local/src/go/anvil/go.mod
-COPY --link go.sum /usr/local/src/go/anvil/go.sum
-RUN \
-  --mount=type=cache,id=gomodcache,sharing=locked,target=/root/go/pkg/mod \
-  go mod download -json && go mod verify
-COPY --link . /usr/local/src/go/anvil
-RUN \
-  --mount=type=cache,id=gomodcache,sharing=locked,target=/root/go/pkg/mod \
-  --mount=type=cache,id=gobuildcache,sharing=locked,target=/root/.cache/go-build \
-  GOPROXY=off go build -v -trimpath -ldflags "-w -s" -o /usr/local/bin/anvil .
+ARG appname=anvil
 
-FROM cgr.dev/chainguard/bash:latest
+FROM golang:1.21.7-bookworm as builder
+ARG appname
+WORKDIR "/go/src/$appname"
+RUN [ \( "$(go env GOARCH)" = 'amd64' \) -a \( "$(go env GOOS)" = 'linux' \) ]
+RUN \
+  --mount=type=cache,id=gomodcache,sharing=locked,target=/go/pkg/mod \
+  --mount=type=bind,source=go.mod,target=go.mod \
+  --mount=type=bind,source=go.sum,target=go.sum \
+  go mod download -json && go mod verify
+RUN \
+  --mount=type=cache,id=gomodcache,sharing=locked,readonly,target=/go/pkg/mod \
+  --mount=type=cache,id=gobuildcache,sharing=locked,target=/root/.cache/go-build \
+  --mount=type=bind,source=.,target=. \
+  GOPROXY=off CGO_ENABLED=0 go build -v -trimpath -ldflags "-w -s" -o "/usr/local/bin/$appname" .
+
+FROM debian:12.4-slim
+ARG appname
 LABEL org.opencontainers.image.authors="Kevin Wang <kevin@xorkevin.com>"
-COPY --link --from=builder /usr/local/bin/anvil /usr/local/bin/anvil
-WORKDIR /home/anvil
-ENTRYPOINT ["/usr/local/bin/anvil"]
-CMD ["workflow", "--config", "/home/anvil/config/.anvil.json", "--input", "/home/anvil/workflows/main.star"]
+COPY --link --from=builder "/usr/local/bin/$appname" "/usr/local/bin/$appname"
+EXPOSE 8080
+WORKDIR "/home/$appname"
+ENTRYPOINT ["anvil", "--config", "./config/.anvil.json", "--log-json"]
+CMD ["workflow", "--input", "./workflows/main.star"]
