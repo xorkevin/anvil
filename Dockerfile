@@ -19,7 +19,6 @@ FROM debian:12.4-slim
 ARG appname
 LABEL org.opencontainers.image.authors="Kevin Wang <kevin@xorkevin.com>"
 COPY --link --from=builder "/usr/local/bin/$appname" "/usr/local/bin/$appname"
-EXPOSE 8080
 WORKDIR "/home/$appname"
 ENTRYPOINT ["anvil", "--config", "./config/.anvil.json", "--log-json"]
 CMD ["workflow", "--input", "./workflows/main.star"]
