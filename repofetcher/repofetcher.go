@@ -8,7 +8,7 @@ import (
 	"io/fs"
 	"net/url"
 	"path"
-	"sort"
+	"slices"
 	"strings"
 
 	"xorkevin.dev/hunter2/h2streamhash"
@@ -213,7 +213,7 @@ func (c *Cache) Sums() []RepoChecksum {
 	for k := range c.sums {
 		keys = append(keys, k)
 	}
-	sort.Strings(keys)
+	slices.Sort(keys)
 	sums := make([]RepoChecksum, 0, len(keys))
 	for _, i := range keys {
 		sums = append(sums, RepoChecksum{
