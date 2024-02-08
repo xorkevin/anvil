@@ -121,7 +121,6 @@ local vars = import '/vars.libsonnet';
 			Expected:  "hello, world\n",
 		},
 	} {
-		tc := tc
 		t.Run(tc.Name, func(t *testing.T) {
 			t.Parallel()
 			assert := require.New(t)

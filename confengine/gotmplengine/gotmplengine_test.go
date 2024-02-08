@@ -41,7 +41,6 @@ func TestEngine(t *testing.T) {
 			Expected: "Hello, world",
 		},
 	} {
-		tc := tc
 		t.Run(tc.Name, func(t *testing.T) {
 			t.Parallel()
 			assert := require.New(t)

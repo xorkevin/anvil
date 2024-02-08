@@ -1,8 +1,6 @@
 module xorkevin.dev/anvil
 
-go 1.21
-
-toolchain go1.21.4
+go 1.22.0
 
 require (
 	github.com/google/go-jsonnet v0.20.0

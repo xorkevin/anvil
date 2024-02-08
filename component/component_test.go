@@ -119,7 +119,6 @@ local args = anvil.getargs();
 			},
 		},
 	} {
-		tc := tc
 		t.Run(tc.Name, func(t *testing.T) {
 			t.Parallel()
 

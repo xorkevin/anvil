@@ -153,7 +153,6 @@ func TestMergePatch(t *testing.T) {
 			Expected: `{"a":{"bb":{}}}`,
 		},
 	} {
-		tc := tc
 		t.Run(tc.Name, func(t *testing.T) {
 			t.Parallel()
 			assert := require.New(t)
