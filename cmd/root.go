@@ -47,7 +47,7 @@ func (c *Cmd) Execute() {
 		PersistentPreRun:  c.initConfig,
 		DisableAutoGenTag: true,
 	}
-	rootCmd.PersistentFlags().StringVar(&c.rootFlags.cfgFile, "config", "", "config file (default is $XDG_CONFIG_HOME/anvil/anvil.yaml)")
+	rootCmd.PersistentFlags().StringVar(&c.rootFlags.cfgFile, "config", "", "config file (default is $XDG_CONFIG_HOME/anvil/anvil.json)")
 	rootCmd.PersistentFlags().StringVar(&c.rootFlags.logLevel, "log-level", "info", "log level")
 	rootCmd.PersistentFlags().BoolVar(&c.rootFlags.logJSON, "log-json", false, "output json logs")
 	c.rootCmd = rootCmd

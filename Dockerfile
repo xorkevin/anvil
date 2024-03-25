@@ -1,6 +1,6 @@
 ARG appname=anvil
 
-FROM golang:1.22.0-bookworm as builder
+FROM golang:1.22.1-bookworm as builder
 ARG appname
 WORKDIR "/go/src/$appname"
 RUN [ \( "$(go env GOARCH)" = 'amd64' \) -a \( "$(go env GOOS)" = 'linux' \) -a \( "$(dpkg --print-architecture)" = 'amd64' \) ]
@@ -26,5 +26,5 @@ RUN \
   apt-get install -y ca-certificates
 COPY --link --from=builder "/usr/local/bin/$appname" "/usr/local/bin/$appname"
 WORKDIR "/home/$appname"
-ENTRYPOINT ["anvil", "--config", "./config/.anvil.json", "--log-json"]
+ENTRYPOINT ["anvil", "--config", "./config/anvil.json", "--log-json"]
 CMD ["workflow", "--input", "./workflows/main.star"]

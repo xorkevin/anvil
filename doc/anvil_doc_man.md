@@ -19,7 +19,7 @@ anvil doc man [flags]
 ### Options inherited from parent commands
 
 ```
-      --config string      config file (default is $XDG_CONFIG_HOME/anvil/anvil.yaml)
+      --config string      config file (default is $XDG_CONFIG_HOME/anvil/anvil.json)
       --log-json           output json logs
       --log-level string   log level (default "info")
   -o, --output string      documentation output path (default ".")

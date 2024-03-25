@@ -9,7 +9,7 @@ A compositional template generator
 ### Options
 
 ```
-      --config string      config file (default is $XDG_CONFIG_HOME/anvil/anvil.yaml)
+      --config string      config file (default is $XDG_CONFIG_HOME/anvil/anvil.json)
   -h, --help               help for anvil
       --log-json           output json logs
       --log-level string   log level (default "info")
