@@ -473,7 +473,7 @@ func (l *universeLibBase) genpass(ctx context.Context, args []any) (any, error) 
 		return nil, fmt.Errorf("%w: Number of bytes must be a positive integer", workflowengine.ErrInvalidArgs)
 	}
 	b := make([]byte, n)
-	if _, err := io.ReadFull(rand.Reader, b); err != nil {
+	if _, err := rand.Read(b); err != nil {
 		return nil, fmt.Errorf("Failed reading rand bytes: %w", err)
 	}
 	return base64.RawURLEncoding.EncodeToString(b), nil
