@@ -72,7 +72,7 @@ func (c *Cmd) initConfig(cmd *cobra.Command, args []string) {
 		handler = klog.NewJSONSlogHandler(logWriter)
 	} else {
 		handler = klog.NewTextSlogHandler(logWriter)
-		handler.FieldTimeInfo = ""
+		handler.FieldTime = ""
 		handler.FieldCaller = ""
 		handler.FieldMod = ""
 	}
